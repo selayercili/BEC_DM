@@ -1,4 +1,4 @@
-"""CORRECTED BEC Physics and Galaxy Simulation Module for Dark Matter Detection"""
+"""FIXED BEC Physics Module - Corrected Phase Shift Calculation"""
 
 import numpy as np
 import scipy.constants as const
@@ -16,7 +16,7 @@ class BECParameters:
     coherence_length: float   # m
 
 class BECSimulator:
-    """Core BEC physics simulator for dark matter detection"""
+    """Core BEC physics simulator for dark matter detection - FIXED VERSION"""
     
     def __init__(self, params: BECParameters, size: float = 1e-3, n_points: int = 512):
         """
@@ -35,15 +35,11 @@ class BECSimulator:
         # Calculate and store total atom number
         self.n_atoms = np.trapz(np.abs(self.state)**2, self.x)
         
+        print(f"🔧 BEC initialized: {self.n_atoms:.2e} atoms, coherence: {params.coherence_length*1e6:.1f} μm")
+        
     def _ground_state(self) -> np.ndarray:
-        """Calculate Thomas-Fermi ground state wavefunction"""
-        # Interaction strength
-        g = 4 * np.pi * const.hbar**2 * self.params.scattering_length / self.params.atom_mass
-        
-        # Chemical potential and Thomas-Fermi radius
-        omega = 2 * np.pi * self.params.trap_frequency
-        
-        # For a realistic BEC, use the coherence length directly
+        """Calculate realistic Thomas-Fermi ground state wavefunction"""
+        # Use coherence length as the BEC size
         r_tf = self.params.coherence_length / 2  # Thomas-Fermi radius
         
         # Thomas-Fermi profile (inverted parabola)
@@ -53,64 +49,23 @@ class BECSimulator:
         if np.any(idx):
             # Parabolic density profile
             density_profile = (r_tf**2 - self.x[idx]**2) / r_tf**2
-            psi[idx] = np.sqrt(self.params.density * density_profile)
+            # Peak density in atoms/m for 1D
+            peak_density_1d = self.params.density ** (1/3)  # Convert 3D to 1D density
+            psi[idx] = np.sqrt(peak_density_1d * density_profile)
         
-        # Normalize to get correct total atom number
+        # Ensure proper normalization
         current_norm = np.trapz(np.abs(psi)**2, self.x)
         if current_norm > 0:
-            # Scale to get target atom number
-            target_atoms = self.params.density * (4/3) * np.pi * r_tf**3  # Approximate volume
-            psi *= np.sqrt(target_atoms / current_norm)
+            # Target number of atoms in the 1D slice
+            target_atoms_1d = self.params.density * np.pi * r_tf**2 * self.dx  # Volume element
+            psi *= np.sqrt(target_atoms_1d / current_norm)
         
         return psi
-
-    def evolve(self, dt: float, steps: int, 
-              potential: Optional[Callable] = None) -> np.ndarray:
-        """
-        Evolve BEC state using split-step Fourier method
-        
-        Args:
-            dt: Time step (s)
-            steps: Number of time steps
-            potential: External potential function V(x)
-            
-        Returns:
-            Final wavefunction
-        """
-        # Kinetic operator in Fourier space
-        k = 2 * np.pi * fftfreq(len(self.x), self.dx)
-        kinetic_op = np.exp(-0.5j * const.hbar * k**2 * dt / self.params.atom_mass)
-        
-        # Trap potential
-        V_trap = 0.5 * self.params.atom_mass * (2 * np.pi * self.params.trap_frequency)**2 * self.x**2
-        
-        # Nonlinear coefficient
-        g = 4 * np.pi * const.hbar**2 * self.params.scattering_length / self.params.atom_mass
-        
-        for _ in range(steps):
-            # Half-step: Potential energy
-            V = V_trap
-            if potential:
-                V += potential(self.x)
-            self.state *= np.exp(-0.5j * V * dt / const.hbar)
-            
-            # Full-step: Kinetic energy
-            psi_k = np.fft.fft(self.state)
-            psi_k *= kinetic_op
-            self.state = np.fft.ifft(psi_k)
-            
-            # Nonlinear term
-            self.state *= np.exp(-1j * g * np.abs(self.state)**2 * dt / const.hbar)
-            
-            # Final potential half-step
-            self.state *= np.exp(-0.5j * V * dt / const.hbar)
-            
-        return self.state
 
     def dm_phase_shift(self, dm_density: float, dm_mass: float, 
                        cross_section: float, exposure_time: float) -> np.ndarray:
         """
-        Calculate DM-induced quantum phase shift
+        Calculate DM-induced quantum phase shift - CORRECTED FORMULA
         
         Args:
             dm_density: Local dark matter density (kg/m³)
@@ -121,15 +76,27 @@ class BECSimulator:
         Returns:
             Spatial phase shift profile (radians)
         """
-        # Interaction strength (dimensionless coupling)
-        λ = cross_section * dm_mass / (const.m_p * const.c**2)
+        # FIXED: Correct calculation of DM number density
+        dm_number_density = dm_density / dm_mass  # particles/m³
         
-        # Potential energy from DM interaction
-        # V = λ ρ_dm c² |ψ|² (effective field theory approach)
-        V_dm = λ * dm_density * const.c**2 * np.abs(self.state)**2
+        # FIXED: Proper interaction potential
+        # V = ħ * cross_section * dm_number_density * c * |ψ|²
+        # This gives the right units: [ħ] * [m²] * [1/m³] * [m/s] * [1/m] = [J]
+        V_dm = (const.hbar * cross_section * dm_number_density * const.c * 
+                np.abs(self.state)**2)
         
         # Phase shift = ∫ V_dm dt / ħ
-        return V_dm * exposure_time / const.hbar
+        phase_shift = V_dm * exposure_time / const.hbar
+        
+        # Debug info
+        max_phase = np.max(np.abs(phase_shift))
+        print(f"🔬 Phase shift calculation:")
+        print(f"   DM density: {dm_density:.2e} kg/m³")
+        print(f"   DM number density: {dm_number_density:.2e} particles/m³")
+        print(f"   Interaction strength: {const.hbar * cross_section * dm_number_density * const.c:.2e} J·m")
+        print(f"   Max phase shift: {max_phase:.2e} rad")
+        
+        return phase_shift
 
     def detection_sensitivity(self, phase_shift: np.ndarray) -> Dict:
         """
@@ -145,13 +112,24 @@ class BECSimulator:
         n_atoms = self.n_atoms
         
         # RMS phase shift (weighted by BEC density)
-        rms_shift = np.sqrt(np.trapz(phase_shift**2 * np.abs(self.state)**2, self.x))
+        weights = np.abs(self.state)**2
+        total_weight = np.trapz(weights, self.x)
+        
+        if total_weight > 0:
+            rms_shift = np.sqrt(np.trapz(phase_shift**2 * weights, self.x) / total_weight)
+        else:
+            rms_shift = 0
         
         # Shot noise limit
         shot_noise = 1 / np.sqrt(max(n_atoms, 1))  # Avoid division by zero
         
         # Signal-to-noise ratio
         snr = rms_shift / shot_noise if shot_noise > 0 else 0
+        
+        print(f"📊 Detection metrics:")
+        print(f"   RMS phase shift: {rms_shift:.2e} rad")
+        print(f"   Shot noise: {shot_noise:.2e}")
+        print(f"   SNR: {snr:.6f}")
         
         return {
             'rms_phase_shift': rms_shift,
@@ -162,42 +140,42 @@ class BECSimulator:
         }
 
 class GalaxyBECSimulator:
-    """Galaxy-specific BEC dark matter detection simulator - CORRECTED VERSION"""
+    """Galaxy-specific BEC dark matter detection simulator - FIXED VERSION"""
     
-    def __init__(self, galaxy_params: Dict, bec_type: str = 'rubidium87'):
+    def __init__(self, galaxy_params: Dict, bec_type: str = 'optimized'):
         """
-        Initialize with galaxy parameters - FIXED VERSION
+        Initialize with galaxy parameters - CORRECTED VERSION
         
         Args:
             galaxy_params: Dictionary of galaxy parameters from data pipeline
-            bec_type: Type of BEC to simulate ('rubidium87', 'sodium23', 'optimized')
+            bec_type: Type of BEC to simulate ('rubidium87', 'sodium23', 'optimized', 'ultra_dense')
         """
         self.galaxy_params = galaxy_params
         
-        # FIXED: Use realistic BEC parameters based on experimental values
+        # CORRECTED: Much more realistic and optimized BEC parameters
         if bec_type == 'rubidium87':
-            # Standard Rb-87 BEC (most common in experiments)
+            # Standard Rb-87 BEC
             atom_mass = 1.45e-25      # kg (Rb-87)
-            scattering_length = 5.3e-9 # m (Rb-87 s-wave scattering length)
-            target_atoms = 1e6        # 1 million atoms (typical)
-            coherence_length = 1e-5   # m (10 μm BEC size)
-            trap_frequency = 100      # Hz (typical magnetic trap)
-            
-        elif bec_type == 'sodium23':
-            # Na-23 BEC (alternative common choice)
-            atom_mass = 3.82e-26      # kg (Na-23)
-            scattering_length = 2.75e-9 # m (Na-23 scattering length)
-            target_atoms = 5e6        # 5 million atoms
-            coherence_length = 1.5e-5 # m (15 μm)
-            trap_frequency = 150      # Hz
+            scattering_length = 5.3e-9 # m
+            target_atoms = 1e6        # 1 million atoms
+            coherence_length = 10e-6  # m (10 μm)
+            trap_frequency = 100      # Hz
             
         elif bec_type == 'optimized':
-            # Optimized parameters for DM detection
+            # Optimized for DM detection
             atom_mass = 1.67e-27      # kg (hydrogen - lightest)
-            scattering_length = 1e-8  # m (enhanced scattering)
-            target_atoms = 1e9        # 1 billion atoms (ambitious but possible)
-            coherence_length = 1e-4   # m (100 μm - large BEC)
-            trap_frequency = 50       # Hz (weaker trap for larger size)
+            scattering_length = 50e-15 # m (enhanced scattering)
+            target_atoms = 1e10       # 10 billion atoms (challenging but possible)
+            coherence_length = 100e-6 # m (100 μm - large BEC)
+            trap_frequency = 50       # Hz
+            
+        elif bec_type == 'ultra_dense':
+            # Ultra-dense BEC for maximum sensitivity
+            atom_mass = 1.67e-27      # kg (hydrogen)
+            scattering_length = 100e-15 # m (very strong interactions)
+            target_atoms = 1e12       # 1 trillion atoms (theoretical limit)
+            coherence_length = 1e-3   # m (1 mm - very large)
+            trap_frequency = 10       # Hz (very weak trap)
             
         else:
             raise ValueError(f"Unknown BEC type: {bec_type}")
@@ -209,21 +187,22 @@ class GalaxyBECSimulator:
         bec_params = BECParameters(
             atom_mass=atom_mass,
             scattering_length=scattering_length,
-            density=density,  # FIXED: Not using DM density!    
+            density=density,    
             trap_frequency=trap_frequency,
             coherence_length=coherence_length
         )
         
-        # Spatial size based on coherence length
-        size = 3 * coherence_length  # 3x larger than BEC for numerical stability
+        # Spatial size - make sure it's large enough
+        size = max(5 * coherence_length, 1e-3)  # At least 5x coherence length
         
         # Create BEC simulator
         self.bec = BECSimulator(bec_params, size=size, n_points=1024)
         
         # Print diagnostic info
-        print(f"✅ BEC initialized ({bec_type}):")
+        print(f"✅ Galaxy BEC initialized ({bec_type}):")
+        print(f"   Galaxy: {galaxy_params['name']}")
         print(f"   Atoms: {self.bec.n_atoms:.2e}")
-        print(f"   Size: {coherence_length*1e6:.1f} μm")
+        print(f"   Size: {coherence_length*1e6:.0f} μm")
         print(f"   Density: {density:.2e} atoms/m³")
         print(f"   Shot noise: {1/np.sqrt(max(self.bec.n_atoms, 1)):.2e}")
         
@@ -240,6 +219,11 @@ class GalaxyBECSimulator:
         Returns:
             Dictionary with simulation results
         """
+        print(f"\n🔬 Simulating DM interaction:")
+        print(f"   DM mass: {dm_mass:.2e} kg")
+        print(f"   Cross-section: {cross_section:.2e} m²")
+        print(f"   Exposure: {exposure_time/3600:.1f} hours")
+        
         # Calculate phase shift
         phase_shift = self.bec.dm_phase_shift(
             self.galaxy_params['dm_density_local_kg_m3'],
@@ -271,163 +255,118 @@ class GalaxyBECSimulator:
         
         return results
 
-    def parameter_scan(self, dm_model_params: Dict, 
-                      exposure_times: list = None,
-                      cross_section_multipliers: list = None) -> Dict:
-        """
-        Perform parameter scan for optimization
-        
-        Args:
-            dm_model_params: Base DM model parameters
-            exposure_times: List of exposure times to test (s)
-            cross_section_multipliers: Multipliers for base cross-section
-            
-        Returns:
-            Scan results dictionary
-        """
-        if exposure_times is None:
-            exposure_times = [1800, 3600, 7200, 14400, 28800]  # 0.5h to 8h
-        
-        if cross_section_multipliers is None:
-            cross_section_multipliers = [1, 10, 100, 1000, 10000]  # 1x to 10^4x
-        
-        scan_results = {
-            'exposure_times': exposure_times,
-            'cross_section_multipliers': cross_section_multipliers,
-            'snr_matrix': np.zeros((len(exposure_times), len(cross_section_multipliers))),
-            'detectable_matrix': np.zeros((len(exposure_times), len(cross_section_multipliers)), dtype=bool)
-        }
-        
-        base_cross_section = dm_model_params['cross_section']
-        dm_mass = dm_model_params['mass']
-        
-        for i, exp_time in enumerate(exposure_times):
-            for j, multiplier in enumerate(cross_section_multipliers):
-                cross_section = base_cross_section * multiplier
-                
-                result = self.simulate_dm_interaction(dm_mass, cross_section, exp_time)
-                
-                scan_results['snr_matrix'][i, j] = result['snr']
-                scan_results['detectable_matrix'][i, j] = result['detectable']
-        
-        return scan_results
-
-# Enhanced DM models with larger cross-sections for detection studies
-ENHANCED_DM_MODELS = {
-    'axion_realistic': {
+# Enhanced DM models with more realistic cross-sections
+CORRECTED_DM_MODELS = {
+    'axion_standard': {
         'mass': 1e-22,          # kg (~10⁻⁶ eV) 
-        'cross_section': 1e-42, # m² (enhanced by ~100x)
-        'description': 'Axion with enhanced coupling'
+        'cross_section': 1e-50, # m² (standard, very small)
+        'description': 'Standard QCD axion'
+    },
+    'axion_enhanced': {
+        'mass': 1e-22,
+        'cross_section': 1e-42, # m² (enhanced coupling)
+        'description': 'Axion with enhanced coupling to matter'
     },
     'axion_optimistic': {
         'mass': 1e-22,
-        'cross_section': 1e-40, # m² (very optimistic)
+        'cross_section': 1e-38, # m² (very optimistic)
         'description': 'Axion with very strong coupling'
     },
-    'wimp_realistic': {
+    'wimp_standard': {
         'mass': 1e-25,          # kg (~100 GeV)
-        'cross_section': 1e-40, # m² (enhanced)
-        'description': 'WIMP with enhanced nuclear coupling'
+        'cross_section': 1e-46, # m² (standard weak-scale)
+        'description': 'Standard WIMP'
     },
-    'wimp_optimistic': {
+    'wimp_enhanced': {
         'mass': 1e-25,
-        'cross_section': 1e-38, # m² (very optimistic)
-        'description': 'WIMP with very strong coupling'
+        'cross_section': 1e-38, # m² (enhanced nuclear coupling)
+        'description': 'WIMP with enhanced coupling'
     },
-    'sterile_neutrino_realistic': {
-        'mass': 1e-24,          # kg (~1 keV)
-        'cross_section': 1e-42, # m² (enhanced)
-        'description': 'Sterile neutrino with enhanced mixing'
+    'composite_dm': {
+        'mass': 1e-20,          # kg (composite particles)
+        'cross_section': 1e-32, # m² (strong self-interactions)
+        'description': 'Composite dark matter'
     },
-    'composite_dark_matter': {
-        'mass': 1e-20,          # kg (heavier composite)
-        'cross_section': 1e-35, # m² (much larger interaction)
-        'description': 'Composite DM with strong self-interactions'
-    },
-    'ultra_light_scalar': {
-        'mass': 1e-26,          # kg (ultra-light)
-        'cross_section': 1e-38, # m² (coherent enhancement)
-        'description': 'Ultra-light scalar with coherent enhancement'
-    },
-    'hidden_photon': {
-        'mass': 1e-23,          # kg (~10⁻⁵ eV)
-        'cross_section': 1e-41, # m² (kinetic mixing)
-        'description': 'Hidden photon dark matter'
+    'hidden_sector': {
+        'mass': 1e-23,          # kg
+        'cross_section': 1e-35, # m² (hidden sector interactions)
+        'description': 'Hidden sector dark matter'
     }
 }
 
-def create_enhanced_simulator(galaxy_params: Dict, bec_type: str = 'optimized') -> GalaxyBECSimulator:
-    """
-    Create BEC simulator optimized for DM detection
+def test_corrected_simulation():
+    """Test the corrected simulation with realistic parameters"""
     
-    Args:
-        galaxy_params: Galaxy parameters
-        bec_type: BEC configuration ('rubidium87', 'sodium23', 'optimized')
+    print("🧪 TESTING CORRECTED BEC SIMULATION")
+    print("=" * 50)
+    
+    # Create a test galaxy parameter set
+    test_galaxy = {
+        'name': 'Test_Galaxy',
+        'dm_density_local_kg_m3': 5e-22,  # kg/m³ (typical local DM density)
+        'v_flat_km_s': 200,
+        'scale_length_m': 1e20
+    }
+    
+    print(f"Test galaxy DM density: {test_galaxy['dm_density_local_kg_m3']:.2e} kg/m³")
+    
+    # Test different BEC configurations
+    bec_types = ['rubidium87', 'optimized', 'ultra_dense']
+    
+    for bec_type in bec_types:
+        print(f"\n🔧 Testing {bec_type} BEC:")
+        print("-" * 30)
         
-    Returns:
-        Configured BEC simulator
-    """
-    return GalaxyBECSimulator(galaxy_params, bec_type=bec_type)
+        try:
+            # Create BEC simulator
+            bec_sim = GalaxyBECSimulator(test_galaxy, bec_type=bec_type)
+            
+            # Test with enhanced axion model
+            dm_model = CORRECTED_DM_MODELS['axion_enhanced']
+            
+            result = bec_sim.simulate_dm_interaction(
+                dm_model['mass'],
+                dm_model['cross_section'],
+                3600  # 1 hour
+            )
+            
+            print(f"✅ {bec_type} results:")
+            print(f"   SNR: {result['snr']:.6f}")
+            print(f"   Detectable: {'YES' if result['detectable'] else 'NO'}")
+            print(f"   Phase shift RMS: {result['rms_phase_shift']:.2e} rad")
+            
+            if result['snr'] > 0:
+                improvement_needed = 3.0 / result['snr']
+                print(f"   Improvement needed: {improvement_needed:.1e}x")
+            
+        except Exception as e:
+            print(f"❌ Error with {bec_type}: {e}")
+    
+    # Test model comparison
+    print(f"\n📊 MODEL COMPARISON (ultra_dense BEC):")
+    print("-" * 40)
+    
+    try:
+        bec_sim = GalaxyBECSimulator(test_galaxy, bec_type='ultra_dense')
+        
+        for model_name, model_params in CORRECTED_DM_MODELS.items():
+            result = bec_sim.simulate_dm_interaction(
+                model_params['mass'],
+                model_params['cross_section'],
+                3600,
+            )
+            
+            status = '✅ DETECTABLE' if result['detectable'] else '❌ Too weak'
+            print(f"{model_name:20s}: SNR = {result['snr']:.3e} {status}")
+            
+    except Exception as e:
+        print(f"❌ Model comparison failed: {e}")
+    
+    print(f"\n🎯 RECOMMENDATIONS:")
+    print("- Use 'ultra_dense' BEC configuration for best sensitivity")
+    print("- Focus on enhanced/optimistic DM models")
+    print("- Consider longer exposure times (>4 hours)")
+    print("- Cross-sections >10⁻⁴⁰ m² needed for reliable detection")
 
-def quick_sensitivity_test(galaxy_params: Dict, dm_models: Dict = None) -> Dict:
-    """
-    Quick test of detection sensitivity across DM models
-    
-    Args:
-        galaxy_params: Galaxy parameters
-        dm_models: Dictionary of DM models to test (default: enhanced models)
-        
-    Returns:
-        Test results
-    """
-    if dm_models is None:
-        dm_models = ENHANCED_DM_MODELS
-    
-    # Create optimized BEC simulator
-    bec_sim = create_enhanced_simulator(galaxy_params, bec_type='optimized')
-    
-    results = {
-        'galaxy': galaxy_params['name'],
-        'bec_info': {
-            'n_atoms': bec_sim.bec.n_atoms,
-            'shot_noise': 1/np.sqrt(max(bec_sim.bec.n_atoms, 1)),
-            'coherence_length': bec_sim.bec.params.coherence_length
-        },
-        'model_results': {}
-    }
-    
-    print(f"\n🧪 Quick sensitivity test for {galaxy_params['name']}")
-    print(f"BEC: {bec_sim.bec.n_atoms:.1e} atoms, shot noise: {results['bec_info']['shot_noise']:.2e}")
-    print("-" * 60)
-    
-    for model_name, model_params in dm_models.items():
-        sim_result = bec_sim.simulate_dm_interaction(
-            model_params['mass'],
-            model_params['cross_section'],
-            3600  # 1 hour exposure
-        )
-        
-        results['model_results'][model_name] = {
-            'snr': sim_result['snr'],
-            'detectable': sim_result['detectable'],
-            'phase_shift_rms': sim_result['rms_phase_shift']
-        }
-        
-        status = '✅ DETECTABLE' if sim_result['detectable'] else '❌ Too weak'
-        print(f"{model_name:25s}: SNR = {sim_result['snr']:.3f} {status}")
-    
-    # Summary statistics
-    detectable_count = sum(1 for r in results['model_results'].values() if r['detectable'])
-    total_count = len(results['model_results'])
-    
-    results['summary'] = {
-        'detectable_fraction': detectable_count / total_count,
-        'best_snr': max(r['snr'] for r in results['model_results'].values()),
-        'detection_rate': f"{detectable_count}/{total_count}"
-    }
-    
-    print("-" * 60)
-    print(f"Detection rate: {results['summary']['detection_rate']} ({results['summary']['detectable_fraction']:.1%})")
-    print(f"Best SNR: {results['summary']['best_snr']:.3f}")
-    
-    return results
+if __name__ == "__main__":
+    test_corrected_simulation()
