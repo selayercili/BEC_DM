@@ -3,7 +3,7 @@
 BEC Dark Matter Simulation Diagnostic Tool
 Analyzes why SNR values are zero and suggests parameter adjustments
 """
-
+from dm_models import DM_MODELS, ENHANCED_DM_MODELS, ALL_DM_MODELS
 import sys
 from pathlib import Path
 import numpy as np
@@ -16,7 +16,7 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 try:
     from data import GalaxyDataManager
     from bec_physics import GalaxyBECSimulator, BECParameters
-    from dm_models import DM_MODELS
+    from dm_models import ENHANCED_DM_MODELS
     import scipy.constants as const
 except ImportError as e:
     print(f"Error importing modules: {e}")
@@ -409,12 +409,25 @@ def main():
         print("❌ Diagnostic failed")
         return
     
-    # Test all DM models
-    print(f"\n3. Testing all DM models...")
+    # Test original models
+    print(f"\n3. Testing original DM models...")
     for dm_model in DM_MODELS.keys():
         result = diagnose_bec_simulation(galaxy_params, dm_model, 3600, verbose=False)
         if result:
             print(f"   {dm_model}: SNR = {result['snr']:.2e} {'✅' if result['detectable'] else '❌'}")
+    
+    # Test enhanced models
+    print(f"\n4. Testing enhanced DM models...")
+    for dm_model in ENHANCED_DM_MODELS.keys():
+        # Temporarily add to DM_MODELS for compatibility
+        DM_MODELS[dm_model] = ENHANCED_DM_MODELS[dm_model]
+        
+        result = diagnose_bec_simulation(galaxy_params, dm_model, 3600, verbose=False)
+        if result:
+            print(f"   {dm_model}: SNR = {result['snr']:.2e} {'✅' if result['detectable'] else '❌'}")
+        
+        # Remove after testing
+        del DM_MODELS[dm_model]
     
     # Run enhanced simulation test
     print(f"\n4. Testing enhanced parameters...")
