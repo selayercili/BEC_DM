@@ -15,7 +15,7 @@ import logging
 
 # Try to import pygrc for real SPARC data
 try:
-    import pygrc
+    import pygrc # type: ignore
     PYGRC_AVAILABLE = True
     print("✅ pygrc package found - will use real SPARC data")
 except ImportError:
