@@ -164,30 +164,68 @@ class BECSimulator:
 class GalaxyBECSimulator:
     """Galaxy-specific BEC dark matter detection simulator - CORRECTED VERSION"""
     
-    def __init__(self, galaxy_params: Dict):
+    def __init__(self, galaxy_params: Dict, bec_type: str = 'rubidium87'):
+        """
+        Initialize with galaxy parameters - FIXED VERSION
         
+        Args:
+            galaxy_params: Dictionary of galaxy parameters from data pipeline
+            bec_type: Type of BEC to simulate ('rubidium87', 'sodium23', 'optimized')
+        """
         self.galaxy_params = galaxy_params
         
+        # FIXED: Use realistic BEC parameters based on experimental values
+        if bec_type == 'rubidium87':
+            # Standard Rb-87 BEC (most common in experiments)
+            atom_mass = 1.45e-25      # kg (Rb-87)
+            scattering_length = 5.3e-9 # m (Rb-87 s-wave scattering length)
+            target_atoms = 1e6        # 1 million atoms (typical)
+            coherence_length = 1e-5   # m (10 μm BEC size)
+            trap_frequency = 100      # Hz (typical magnetic trap)
+            
+        elif bec_type == 'sodium23':
+            # Na-23 BEC (alternative common choice)
+            atom_mass = 3.82e-26      # kg (Na-23)
+            scattering_length = 2.75e-9 # m (Na-23 scattering length)
+            target_atoms = 5e6        # 5 million atoms
+            coherence_length = 1.5e-5 # m (15 μm)
+            trap_frequency = 150      # Hz
+            
+        elif bec_type == 'optimized':
+            # Optimized parameters for DM detection
+            atom_mass = 1.67e-27      # kg (hydrogen - lightest)
+            scattering_length = 1e-8  # m (enhanced scattering)
+            target_atoms = 1e9        # 1 billion atoms (ambitious but possible)
+            coherence_length = 1e-4   # m (100 μm - large BEC)
+            trap_frequency = 50       # Hz (weaker trap for larger size)
+            
+        else:
+            raise ValueError(f"Unknown BEC type: {bec_type}")
+        
+        # Calculate density from target atom number and coherence volume
+        volume = (4/3) * np.pi * (coherence_length/2)**3  # Spherical volume
+        density = target_atoms / volume
+        
         bec_params = BECParameters(
-            atom_mass=1.45e-25,        # kg (Rubidium-87, not hydrogen!)
-            scattering_length=5.3e-9,  # m (Rb-87 scattering length)
-            density=1e15,              # atoms/m³ (REALISTIC BEC DENSITY)
-            trap_frequency=100,        # Hz (typical optical/magnetic trap)
-            coherence_length=1e-5      # m (10 μm BEC size)
+            atom_mass=atom_mass,
+            scattering_length=scattering_length,
+            density=density,  # FIXED: Not using DM density!    
+            trap_frequency=trap_frequency,
+            coherence_length=coherence_length
         )
         
-        # Calculate atom number
-        volume = bec_params.coherence_length**3
-        n_atoms = bec_params.density * volume
-        
-        print(f"BEC initialized with {n_atoms:.1e} atoms")
-        print(f"Shot noise limit: {1/np.sqrt(n_atoms):.2e}")
-        
         # Spatial size based on coherence length
-        size = 2 * bec_params.coherence_length  # 20 μm total size
+        size = 3 * coherence_length  # 3x larger than BEC for numerical stability
         
-        self.bec = BECSimulator(bec_params, size=size)
+        # Create BEC simulator
+        self.bec = BECSimulator(bec_params, size=size, n_points=1024)
         
+        # Print diagnostic info
+        print(f"✅ BEC initialized ({bec_type}):")
+        print(f"   Atoms: {self.bec.n_atoms:.2e}")
+        print(f"   Size: {coherence_length*1e6:.1f} μm")
+        print(f"   Density: {density:.2e} atoms/m³")
+        print(f"   Shot noise: {1/np.sqrt(max(self.bec.n_atoms, 1)):.2e}")
         
     def simulate_dm_interaction(self, dm_mass: float, cross_section: float, 
                                exposure_time: float = 3600) -> Dict:
