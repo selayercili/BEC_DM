@@ -4,6 +4,13 @@
 Run a simple test simulation: 2D TD-GPE with a cosine ULDM perturbation.
 Saves Δφ(t) and a PSD plot.
 """
+import sys
+from pathlib import Path
+
+# ensure project root is in sys.path
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
 
 import numpy as np
 from pathlib import Path
