@@ -132,7 +132,7 @@ class BECSimulation:
             self.psi = self._apply_kinetic_half(self.psi)
 
             # potential + nonlinear full step
-            Vt = V_function(t)
+            Vt = V_function(self.grid, t)
             self.psi = self._apply_potential_and_nonlinear(self.psi, Vt)
 
             # half kinetic
@@ -166,6 +166,11 @@ class BECSimulation:
         out = TIME_SERIES_DIR / filename
         np.savez_compressed(out, times=result.times, delta_phi=result.delta_phi)
         print(f"Saved time series to {out}")
+
+    def ul_dm_cosine_potential(A, m_phi):
+        def V_dm(x, t):
+            return A * np.cos(m_phi * t)  # could include x later
+        return V_dm
 
     def plot_delta_phi(self, result: SimulationResult, filename: str = "delta_phi.png"):
         fig, ax = plt.subplots(figsize=(8,3))

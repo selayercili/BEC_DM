@@ -56,7 +56,7 @@ def main():
     V_env = apply_environment(grid_positions, neutron_star_potential)
 
     # --- Combine potentials ---
-    def total_potential(grid_coords, t=0):
+    def total_potential(grid_coords, t):
         return V_dm(grid_coords, t) + V_env
 
     # --- Run simulation ---
