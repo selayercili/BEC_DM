@@ -18,7 +18,7 @@ def ul_dm_cosine_potential(xy: Tuple[np.ndarray, np.ndarray],
                            direction: float = 0.0,
                            spatial_modulation: bool = True):
     """
-    Build a closure function V_DM(x, y, t) that returns the potential at time t.
+    Build a closure function V_DM(grid_coords, t) that returns the potential at time t.
 
     Args:
         xy: (X, Y) meshgrid arrays in meters.
@@ -30,26 +30,34 @@ def ul_dm_cosine_potential(xy: Tuple[np.ndarray, np.ndarray],
         spatial_modulation: if True include k·r term to simulate moving wave
 
     Returns:
-        function V(x, y, t) -> potential array (same shape as X)
+        function V(grid_coords, t) -> potential array (same shape as X)
     """
     # constants
     hbar = 1.054571817e-34
+    c = 2.99792458e8  # m/s
     eV_to_J = 1.602176634e-19
     m_phi_J = m_phi_ev * eV_to_J
-    omega = m_phi_J / hbar  # angular frequency (rad/s)
+    omega = m_phi_J * c**2 / hbar  # angular frequency (rad/s)
 
     X, Y = xy
 
     if spatial_modulation:
         # wavenumber magnitude k = m_phi * v / ħ  (order-of-magnitude)
-        k = (m_phi_J * v_dm) / hbar  # 1/m
+        k = (m_phi_J * v_dm) / (hbar * c**2)  # 1/m
         kx = k * np.cos(direction)
         ky = k * np.sin(direction)
         kr = kx * X + ky * Y
     else:
         kr = 0.0
 
-    def V_dm(t: float):
+    def V_dm(grid_coords: Tuple[np.ndarray, np.ndarray], t: float):
+        """
+        Returns potential grid in Joules.
+        
+        Args:
+            grid_coords: (X, Y) coordinate arrays (not used in calculation but kept for interface consistency)
+            t: time in seconds
+        """
         # returns potential grid in Joules
         return amplitude_J * np.cos(omega * t - kr + phase0)
 

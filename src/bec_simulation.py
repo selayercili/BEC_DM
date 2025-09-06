@@ -70,8 +70,8 @@ class BECSimulation:
         self.k2 = KX**2 + KY**2
 
         # kinetic evolution factor for half step
-        self._K_half = np.exp(-1j * (self.dt / 2.0) * (0.5 * (1.0 / self.m) * ( (1.054571817e-34)**2 ) * self.k2) / 1.054571817e-34)
-        # The expression is arranged to have units consistent; it's a simple implementation. Tune if needed.
+        hbar = 1.054571817e-34
+        self._K_half = np.exp(-1j * (self.dt / 2.0) * (hbar / (2.0 * self.m)) * self.k2)
 
     def initialize_wavefunction(self, kind: str = "gaussian", width: float = 10.0):
         """Initialize Ψ on the grid."""
@@ -102,13 +102,14 @@ class BECSimulation:
         phase = np.exp(-1j * (self.dt / hbar) * (V_ext + nonlinear))
         return psi * phase
 
-    def run(self, V_function: Callable[[float], np.ndarray], readout_mask: np.ndarray = None,
+    def run(self, V_function: Callable[[Tuple[np.ndarray, np.ndarray], float], np.ndarray], 
+            readout_mask: np.ndarray = None,
             snapshot_interval: int = 0) -> SimulationResult:
         """
         Run the TD-GPE solver.
 
         Args:
-            V_function: function of time t -> 2D potential (same shape as grid)
+            V_function: function of ((X, Y), t) -> 2D potential (same shape as grid)
             readout_mask: boolean mask selecting region A (if None, will use left half vs right half)
             snapshot_interval: save psi snapshot every N steps (0 => none)
 
@@ -166,11 +167,6 @@ class BECSimulation:
         out = TIME_SERIES_DIR / filename
         np.savez_compressed(out, times=result.times, delta_phi=result.delta_phi)
         print(f"Saved time series to {out}")
-
-    def ul_dm_cosine_potential(A, m_phi):
-        def V_dm(x, t):
-            return A * np.cos(m_phi * t)  # could include x later
-        return V_dm
 
     def plot_delta_phi(self, result: SimulationResult, filename: str = "delta_phi.png"):
         fig, ax = plt.subplots(figsize=(8,3))

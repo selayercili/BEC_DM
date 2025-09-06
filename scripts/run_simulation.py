@@ -19,7 +19,7 @@ from scipy.signal import welch
 from src.bec_simulation import BECSimulation
 from src.dark_matter import ul_dm_cosine_potential
 from src.utils import RESULTS_DIR, SPECTRA_DIR
-from src.environment import neutron_star_potential, apply_environment
+from src.environment import neutron_star_potential, create_environment_potential
 
 def main():
     # --- simulation parameters ---
@@ -52,13 +52,21 @@ def main():
                                   spatial_modulation=False)
 
     # --- Neutron star environment potential ---
-    grid_positions = np.sqrt(sim.X**2 + sim.Y**2)  # radial distance from center
-    V_env = apply_environment(grid_positions, neutron_star_potential)
+    V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
 
     # --- Combine potentials ---
     def total_potential(grid_coords, t):
-        X,Y = grid_coords
-        return V_dm((X,Y), t) + V_env(X,Y)
+        """
+        Combined potential function.
+        
+        Args:
+            grid_coords: (X, Y) coordinate tuple
+            t: time in seconds
+            
+        Returns:
+            Combined potential array
+        """
+        return V_dm(grid_coords, t) + V_env(grid_coords, t)
 
     # --- Run simulation ---
     print("Running simulation with neutron star environment...")
