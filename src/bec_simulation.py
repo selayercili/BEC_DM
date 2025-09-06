@@ -132,7 +132,7 @@ class BECSimulation:
             self.psi = self._apply_kinetic_half(self.psi)
 
             # potential + nonlinear full step
-            Vt = V_function(self.grid, t)
+            Vt = V_function((self.X, self.Y), t)
             self.psi = self._apply_potential_and_nonlinear(self.psi, Vt)
 
             # half kinetic
