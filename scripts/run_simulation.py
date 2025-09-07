@@ -28,7 +28,7 @@ def main():
     m_particle = 1.6726219e-27  # kg
     g = 1e-52
     dt = 1e-3
-    t_total = 0.5  # seconds (toy run; scale later in Colab)
+    t_total = 20  # seconds (toy run; scale later in Colab)
 
     # --- dark matter parameters ---
     amplitude_J = 1e-30
