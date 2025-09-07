@@ -54,8 +54,8 @@ def main():
     def V_dm(coords, t):
         """ULDM potential as array over grid at time t."""
         X, Y = coords
-        val = base_V_dm(t)  # scalar from original fn
-        return np.ones_like(X) * val
+        val = base_V_dm((X,Y),t)  # scalar from original fn
+        return val
 
     # --- Neutron star environment potential (spatially dependent, static) ---
     V_env = create_environment_potential(sim.X, sim.Y)
