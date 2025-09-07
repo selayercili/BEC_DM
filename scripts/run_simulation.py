@@ -19,7 +19,7 @@ from scipy.signal import welch
 from src.bec_simulation import BECSimulation
 from src.dark_matter import ul_dm_cosine_potential
 from src.utils import RESULTS_DIR, SPECTRA_DIR
-from src.environment import neutron_star_potential, create_environment_potential
+from src.environment import neutron_star_potential, apply_environment
 
 def main():
     # --- simulation parameters ---
@@ -28,7 +28,7 @@ def main():
     m_particle = 1.6726219e-27  # kg
     g = 1e-52
     dt = 1e-3
-    t_total = 20  # seconds (toy run; scale later in Colab)
+    t_total = 20.0  # seconds
 
     # --- dark matter parameters ---
     amplitude_J = 1e-24
@@ -42,62 +42,36 @@ def main():
                         m_particle=m_particle, g=g, dt=dt, t_total=t_total)
     sim.initialize_wavefunction(kind="gaussian", width=8.0)
 
-    # --- DM potential ---
-    V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
-                                  amplitude_J=amplitude_J,
-                                  m_phi_ev=m_phi_ev,
-                                  phase0=phase0,
-                                  v_dm=v_dm,
-                                  direction=direction,
-                                  spatial_modulation=False)
+    # --- DM potential (time-dependent, uniform across grid) ---
+    base_V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
+                                       amplitude_J=amplitude_J,
+                                       m_phi_ev=m_phi_ev,
+                                       phase0=phase0,
+                                       v_dm=v_dm,
+                                       direction=direction,
+                                       spatial_modulation=False)
 
-    # --- Neutron star environment potential ---
-    V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
+    def V_dm(coords, t):
+        """ULDM potential as array over grid at time t."""
+        X, Y = coords
+        val = base_V_dm(t)  # scalar from original fn
+        return np.ones_like(X) * val
 
-    # --- Diagnostic prints: check potentials and shapes ---
-    # If V_dm is a function of t (baked-in grid) call it at t=0, t=0.1, etc.
-    try:
-        V0 = V_dm(0.0)      # if V_dm expects t only
-        V1 = V_dm(0.1)
-    except TypeError:
-        # if V_dm expects (grid, t)
-        V0 = V_dm((sim.X, sim.Y), 0.0)
-        V1 = V_dm((sim.X, sim.Y), 0.1)
+    # --- Neutron star environment potential (spatially dependent, static) ---
+    V_env = apply_environment(np.sqrt(sim.X**2 + sim.Y**2),
+                              neutron_star_potential)
 
-    print("V_dm shape:", np.shape(V0), "min/max:", V0.min(), V0.max())
-    print("V_dm(t=0.1) min/max:", V1.min(), V1.max())
-
-    print("V_env shape:", np.shape(V_env), "min/max:", V_env.min(), V_env.max())
-
-    tot0 = V0 + V_env
-    print("Total potential at t=0: min/max:", tot0.min(), tot0.max())
+    # --- Debug prints ---
+    V_dm_test = V_dm((sim.X, sim.Y), 0.0)
+    print(f"[DEBUG] V_dm(t=0): shape={V_dm_test.shape}, min={V_dm_test.min():.3e}, max={V_dm_test.max():.3e}")
+    print(f"[DEBUG] V_env: shape={V_env.shape}, min={V_env.min():.3e}, max={V_env.max():.3e}")
+    print(f"[DEBUG] Combined potential (t=0): min={(V_dm_test+V_env).min():.3e}, max={(V_dm_test+V_env).max():.3e}")
 
     # --- Combine potentials ---
-    def total_potential(grid_coords, t):
-        """
-        Combined potential function.
-        
-        Args:
-            grid_coords: (X, Y) coordinate tuple
-            t: time in seconds
-            
-        Returns:
-            Combined potential array
-        """
-
-        X, Y = grid_coords
-        # V_dm may be t-only or space+time; handle both
-        try:
-            Vd = V_dm(t)
-        except TypeError:
-            Vd = V_dm((X, Y), t)
-        Vtot = Vd + V_env  # V_env must be array shaped (nx,ny)
-        # Diagnostic
-        if not isinstance(Vtot, np.ndarray):
-            Vtot = np.array(Vtot)
-        assert Vtot.shape == X.shape, f"Vtot shape {Vtot.shape} != grid shape {X.shape}"
+    def total_potential(coords, t):
+        X, Y = coords
+        Vtot = V_dm((X, Y), t) + V_env
         return Vtot
-        
 
     # --- Run simulation ---
     print("Running simulation with neutron star environment...")
@@ -113,7 +87,7 @@ def main():
     np.savez_compressed(SPECTRA_DIR / "delta_phi_psd.npz", f=f, Pxx=Pxx)
 
     # --- Plot PSD ---
-    fig, ax = plt.subplots(figsize=(6,4))
+    fig, ax = plt.subplots(figsize=(6, 4))
     ax.loglog(f[1:], Pxx[1:])
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("PSD")
