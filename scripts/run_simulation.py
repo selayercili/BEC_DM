@@ -54,6 +54,24 @@ def main():
     # --- Neutron star environment potential ---
     V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
 
+    # --- Diagnostic prints: check potentials and shapes ---
+    # If V_dm is a function of t (baked-in grid) call it at t=0, t=0.1, etc.
+    try:
+        V0 = V_dm(0.0)      # if V_dm expects t only
+        V1 = V_dm(0.1)
+    except TypeError:
+        # if V_dm expects (grid, t)
+        V0 = V_dm((sim.X, sim.Y), 0.0)
+        V1 = V_dm((sim.X, sim.Y), 0.1)
+
+    print("V_dm shape:", np.shape(V0), "min/max:", V0.min(), V0.max())
+    print("V_dm(t=0.1) min/max:", V1.min(), V1.max())
+
+    print("V_env shape:", np.shape(V_env), "min/max:", V_env.min(), V_env.max())
+
+    tot0 = V0 + V_env
+    print("Total potential at t=0: min/max:", tot0.min(), tot0.max())
+
     # --- Combine potentials ---
     def total_potential(grid_coords, t):
         """
@@ -66,7 +84,20 @@ def main():
         Returns:
             Combined potential array
         """
-        return V_dm(grid_coords, t) + V_env(grid_coords, t)
+
+        X, Y = grid_coords
+        # V_dm may be t-only or space+time; handle both
+        try:
+            Vd = V_dm(t)
+        except TypeError:
+            Vd = V_dm((X, Y), t)
+        Vtot = Vd + V_env  # V_env must be array shaped (nx,ny)
+        # Diagnostic
+        if not isinstance(Vtot, np.ndarray):
+            Vtot = np.array(Vtot)
+        assert Vtot.shape == X.shape, f"Vtot shape {Vtot.shape} != grid shape {X.shape}"
+        return Vtot
+        
 
     # --- Run simulation ---
     print("Running simulation with neutron star environment...")
