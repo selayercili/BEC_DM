@@ -248,21 +248,28 @@ class BECDarkMatterPlotter:
         ax3 = axes[1, 0]
         dt = times[1] - times[0]
         fs = 1.0 / dt
-        f, Pxx = welch(delta_phi, fs=fs, nperseg=min(256, len(delta_phi)))
-        
-        ax3.loglog(f[1:], Pxx[1:], color=self.colors['primary'], linewidth=1.5)
-        
-        # Find and mark peaks
-        peaks, properties = find_peaks(Pxx[1:], height=np.max(Pxx[1:])*0.1)
-        if len(peaks) > 0:
-            ax3.scatter(f[peaks+1], Pxx[peaks+1], color=self.colors['secondary'], 
-                       s=50, marker='o', zorder=5, label=f'{len(peaks)} peaks found')
-            ax3.legend()
-        
-        ax3.set_xlabel('Frequency (Hz)')
-        ax3.set_ylabel('Power Spectral Density')
-        ax3.set_title('Spectral Peak Analysis')
-        ax3.grid(True, alpha=0.3)
+        try:
+            f, Pxx = welch(delta_phi, fs=fs, nperseg=min(256, len(delta_phi)))
+            
+            ax3.loglog(f[1:], Pxx[1:], color=self.colors['primary'], linewidth=1.5)
+            
+            # Find and mark peaks
+            peaks, properties = find_peaks(Pxx[1:], height=np.max(Pxx[1:])*0.1)
+            if len(peaks) > 0:
+                ax3.scatter(f[peaks+1], Pxx[peaks+1], color=self.colors['secondary'], 
+                           s=50, marker='o', zorder=5, label=f'{len(peaks)} peaks found')
+                ax3.legend()
+            
+            ax3.set_xlabel('Frequency (Hz)')
+            ax3.set_ylabel('Power Spectral Density')
+            ax3.set_title('Spectral Peak Analysis')
+            ax3.grid(True, alpha=0.3)
+        except Exception as e:
+            ax3.text(0.5, 0.5, f'PSD Error: {str(e)}', transform=ax3.transAxes, ha='center', va='center')
+            ax3.set_xlabel('Frequency (Hz)')
+            ax3.set_ylabel('Power Spectral Density')
+            ax3.set_title('Spectral Peak Analysis')
+            ax3.grid(True, alpha=0.3)
         
         # 4. Detection metrics and parameters
         ax4 = axes[1, 1]
