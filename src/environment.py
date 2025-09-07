@@ -1,43 +1,33 @@
 import numpy as np
-from typing import Tuple
 
 def neutron_star_potential(r, M_ns=1.4*1.9885e30, R_ns=1e4):
     """
     Neutron star gravitational potential.
-    r: radial distance from star center [m]
-    M_ns: mass [kg], R_ns: radius [m]
+
+    Args:
+        r: radial distance from star center [m]
+        M_ns: mass [kg] (default ~1.4 solar masses)
+        R_ns: neutron star radius [m] (default 10 km)
+
+    Returns:
+        Gravitational potential at distance r [J/kg]
     """
     G = 6.67430e-11
     return -G * M_ns / np.maximum(r, R_ns)
 
-def create_environment_potential(X: np.ndarray, Y: np.ndarray, potential_func, **kwargs):
+
+def create_environment_potential(X: np.ndarray, Y: np.ndarray, potential_func=neutron_star_potential, **kwargs):
     """
-    Create a static environment potential function that can be called with grid coordinates and time.
-    
+    Create a static environment potential array from a given potential function.
+
     Args:
         X, Y: meshgrid coordinate arrays
         potential_func: function that takes radial distance and returns potential
-        **kwargs: additional arguments for potential_func
-    
+        **kwargs: extra arguments for potential_func
+
     Returns:
-        function V_env(grid_coords, t) -> potential array
+        V_env: 2D numpy array of potential values with shape matching X, Y
     """
-    # Pre-calculate the radial distances
     r = np.sqrt(X**2 + Y**2)
-    # Pre-calculate the potential (static, so we can do this once)
-    V_static = potential_func(r, **kwargs)
-    
-    def V_env(grid_coords: Tuple[np.ndarray, np.ndarray], t: float):
-        """
-        Environment potential function.
-        
-        Args:
-            grid_coords: (X, Y) coordinate arrays (not used since potential is pre-calculated)
-            t: time in seconds (not used for static potential)
-            
-        Returns:
-            potential array in Joules
-        """
-        return V_static
-    
+    V_env = potential_func(r, **kwargs)
     return V_env

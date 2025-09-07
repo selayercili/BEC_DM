@@ -19,7 +19,7 @@ from scipy.signal import welch
 from src.bec_simulation import BECSimulation
 from src.dark_matter import ul_dm_cosine_potential
 from src.utils import RESULTS_DIR, SPECTRA_DIR
-from src.environment import neutron_star_potential, apply_environment
+from src.environment import create_environment_potential
 
 def main():
     # --- simulation parameters ---
@@ -58,8 +58,7 @@ def main():
         return np.ones_like(X) * val
 
     # --- Neutron star environment potential (spatially dependent, static) ---
-    V_env = apply_environment(np.sqrt(sim.X**2 + sim.Y**2),
-                              neutron_star_potential)
+    V_env = create_environment_potential(sim.X, sim.Y)
 
     # --- Debug prints ---
     V_dm_test = V_dm((sim.X, sim.Y), 0.0)
