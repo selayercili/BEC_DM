@@ -31,8 +31,8 @@ def main():
     t_total = 20  # seconds (toy run; scale later in Colab)
 
     # --- dark matter parameters ---
-    amplitude_J = 1e-30
-    m_phi_ev = 1e-18
+    amplitude_J = 1e-24
+    m_phi_ev = 1e-14
     phase0 = 0.0
     v_dm = 220e3
     direction = 0.0
