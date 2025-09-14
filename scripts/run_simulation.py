@@ -101,7 +101,7 @@ def main():
     m_particle = 1.6726219e-27
     g = 1e-52
     dt = 1e-3
-    t_total = 20.0  # debug run
+    t_total = 7.0  # debug run
 
     # --- ULDM params (debug-friendly defaults; scale to realistic later) ---
     amplitude_J = 1e-24
