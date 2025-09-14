@@ -43,13 +43,32 @@ def ul_dm_cosine_potential(grid_coords, amplitude_J, m_phi_ev,
         k_mag = (mass_kg * v_dm) / hbar
         kx = k_mag * np.cos(direction)
         ky = k_mag * np.sin(direction)
-        spatial_phase = kx * X + ky * Y
     else:
-        spatial_phase = 0.0
+        kx = ky = 0.0
 
     def V_dm(coords, t):
-        # ignore coords (we captured X,Y), but keep signature coords,t for clarity
-        # returns a full 2D array
+        """
+        ULDM potential at given coordinates and time.
+        
+        Parameters
+        ----------
+        coords : tuple (X, Y)
+            Coordinate arrays (can be different from grid_coords)
+        t : float
+            Time in seconds
+            
+        Returns
+        -------
+        ndarray
+            Potential values with same shape as coordinate arrays
+        """
+        X_eval, Y_eval = coords
+        
+        if spatial_modulation:
+            spatial_phase = kx * X_eval + ky * Y_eval
+        else:
+            spatial_phase = 0.0
+            
         return amplitude_J * np.cos(omega * t + spatial_phase + phase0)
 
     return V_dm
