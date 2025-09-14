@@ -107,18 +107,41 @@ class BECSimulation:
 
         # helper to call V_function robustly
         def call_V(coords, t):
+            """
+            Robustly call V_function with either signature:
+            - V_function(coords, t)
+            - V_function(t)
+            Always return a numpy array shaped like self.X
+            """
+            # Try to inspect signature if possible
             try:
-                V = V_function(coords, t)
-            except TypeError:
-                # try time-only
-                V = V_function(t)
+                sig = inspect.signature(V_function)
+                n_params = len(sig.parameters)
+            except Exception:
+                n_params = None
+
+            V = None
+            # Prefer coords,t when possible
+            if n_params is None or n_params >= 2:
+                try:
+                    V = V_function(coords, t)
+                except TypeError:
+                    V = None
+            if V is None:
+                # try time-only call
+                try:
+                    V = V_function(t)
+                except Exception:
+                    # last resort: try calling with no args
+                    try:
+                        V = V_function()
+                    except Exception as e:
+                        raise RuntimeError(f"V_function is not callable with (coords,t) or (t): {e}")
+
             V = np.asarray(V)
-            # If V is scalar, broadcast
             if V.shape == ():
                 V = np.ones_like(self.X) * float(V)
-            # final check
             if V.shape != self.X.shape:
-                # try to broadcast
                 try:
                     V = np.broadcast_to(V, self.X.shape)
                 except Exception as e:

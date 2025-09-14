@@ -1,50 +1,55 @@
 # src/dark_matter.py
 import numpy as np
 
+# physical constants
+eV_to_J = 1.602176634e-19
+hbar = 1.054571817e-34
+c_light = 299792458.0
+
 def ul_dm_cosine_potential(grid_coords, amplitude_J, m_phi_ev,
                            phase0=0.0, v_dm=220e3, direction=0.0,
                            spatial_modulation=True):
     """
-    Build a ULDM cosine potential function with a consistent interface:
-        V_dm((X,Y), t) -> ndarray [nx, ny]
+    Build a ULDM cosine potential function with a **consistent interface**:
+        V_dm((X,Y), t) -> ndarray [ny, nx]
 
     Parameters
     ----------
-    grid_coords : (X,Y)
-        Meshgrid arrays (same shape).
+    grid_coords : tuple (X, Y)
+        Meshgrid coordinate arrays (units: meters)
     amplitude_J : float
-        Amplitude of the potential (J).
+        Amplitude of the DM potential in Joules
     m_phi_ev : float
-        ULDM particle mass (eV).
+        ULDM 'mass' in eV (mass-energy)
     phase0 : float
-        Initial phase (rad).
+        Initial phase offset (rad)
     v_dm : float
-        Typical DM velocity (m/s).
+        DM bulk speed [m/s]
     direction : float
-        Propagation direction in radians.
+        Propagation direction (radians)
     spatial_modulation : bool
-        If True, apply a plane-wave factor exp(i k·r).
+        If True, include k·r spatial modulation; otherwise only cos(ω t + φ)
     """
     X, Y = grid_coords
 
-    # constants
-    eV_to_J = 1.602176634e-19
-    hbar = 1.054571817e-34
+    # angular frequency (rad/s): ω = (m_phi * eV_to_J) / ħ
+    omega = (m_phi_ev * eV_to_J) / hbar
 
-    # angular frequency
-    omega = (m_phi_ev * eV_to_J) / hbar  # rad/s
+    # convert mass-energy to mass (kg): m = (m_phi * eV_to_J) / c^2
+    mass_kg = (m_phi_ev * eV_to_J) / (c_light**2)
 
-    # wavevector
-    k_mag = (m_phi_ev * eV_to_J) / (hbar * 3e8) * v_dm
-    kx, ky = k_mag * np.cos(direction), k_mag * np.sin(direction)
-
+    # correct de Broglie wavevector magnitude (k = m * v / ħ)
     if spatial_modulation:
+        k_mag = (mass_kg * v_dm) / hbar
+        kx = k_mag * np.cos(direction)
+        ky = k_mag * np.sin(direction)
         spatial_phase = kx * X + ky * Y
     else:
         spatial_phase = 0.0
 
     def V_dm(coords, t):
-        # ignore coords, we already captured X,Y
+        # ignore coords (we captured X,Y), but keep signature coords,t for clarity
+        # returns a full 2D array
         return amplitude_J * np.cos(omega * t + spatial_phase + phase0)
 
     return V_dm

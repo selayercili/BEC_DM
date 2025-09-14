@@ -128,12 +128,10 @@ def run_with_dm_test():
                                   spatial_modulation=True)
     # base should be callable: either base((X,Y),t) or base(t) that returns an array.
     
-    V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
-                              amplitude_J=TEST_AMPLITUDE_J,
-                              m_phi_ev=TEST_MPHI_EV,
-                              spatial_modulation=True)
-    V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
-    
+    V_dm = ul_dm_cosine_potential((sim.X, sim.Y), amplitude_J=..., m_phi_ev=..., spatial_modulation=True)
+
+    V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential, center_offset=(x0,y0), R_ns=R_ns)
+
     def V_total(coords, t):
         return V_dm(coords, t) + V_env
 
