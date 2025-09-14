@@ -127,17 +127,15 @@ def run_with_dm_test():
                                   direction=0.0,
                                   spatial_modulation=True)
     # base should be callable: either base((X,Y),t) or base(t) that returns an array.
+    
+    V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
+                              amplitude_J=TEST_AMPLITUDE_J,
+                              m_phi_ev=TEST_MPHI_EV,
+                              spatial_modulation=True)
+    V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
+    
     def V_total(coords, t):
-        Xc, Yc = coords
-        # try coords + t call first
-        try:
-            V = base((Xc, Yc), t)
-        except TypeError:
-            V = base(t)
-            # if scalar broadcast
-            V = np.ones_like(Xc) * float(V)
-        V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
-        return V + V_env
+        return V_dm(coords, t) + V_env
 
     # Diagnostic: sample potential at center over a short time
     ts = np.linspace(0, min(1.0, TEST_T_TOTAL), 400)
