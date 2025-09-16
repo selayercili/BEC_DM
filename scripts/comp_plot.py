@@ -128,7 +128,17 @@ def run_with_dm_test():
                                   spatial_modulation=True)
     # base should be callable: either base((X,Y),t) or base(t) that returns an array.
     
-    V_dm = ul_dm_cosine_potential((sim.X, sim.Y), amplitude_J=1e-18, m_phi_ev=1e-12, spatial_modulation=True)
+    # boosted test values
+    m_phi_ev = 1e-12       # test mass, eV
+    amplitude_J = 1e-18    # potential amplitude in Joules
+
+    V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
+                                amplitude_J=amplitude_J,
+                                m_phi_ev=m_phi_ev,
+                                spatial_modulation=True)
+
+    x0, y0 = 0.0, 0.0   # neutron star centered at origin
+    R_ns = 1.0          # radius of the star (in grid units)
 
     V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential, center_offset=(x0,y0), R_ns=R_ns)
 
