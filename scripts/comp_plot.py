@@ -50,18 +50,23 @@ def compute_psd(times, signal):
     freqs, psd = welch(signal, fs=fs, nperseg=nperseg)
     return freqs, psd
 
-def save_time_plot(times, signal, out_path, title="Phase vs time", zoom_first_sec=True):
+def save_time_plot(times, signal, out_path, title="Phase vs time", zoom_first_sec=True, y_limits=None):
     plt.figure(figsize=(8,3))
     plt.plot(times, signal, alpha=0.8)
     # running average
     N = max(3, len(signal)//200)
     avg = np.convolve(signal, np.ones(N)/N, mode='same')
     plt.plot(times, avg, color='red', linewidth=1.5, label=f"running avg (N={N})")
-    # autoscale y to data range (small margin)
-    ymin, ymax = np.min(signal), np.max(signal)
-    if np.isfinite(ymin) and np.isfinite(ymax) and (ymax - ymin) > 0:
-        pad = 0.1 * (ymax - ymin)
-        plt.ylim(ymin - pad, ymax + pad)
+    
+    # y-axis scaling
+    if y_limits is not None:
+        plt.ylim(*y_limits)
+    else:
+        ymin, ymax = np.min(signal), np.max(signal)
+        if np.isfinite(ymin) and np.isfinite(ymax) and (ymax - ymin) > 0:
+            pad = 0.1 * (ymax - ymin)
+            plt.ylim(ymin - pad, ymax + pad)
+
     plt.xlabel("Time (s)")
     plt.ylabel("Δφ [rad]")
     plt.title(title)
@@ -70,23 +75,6 @@ def save_time_plot(times, signal, out_path, title="Phase vs time", zoom_first_se
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches='tight')
     plt.close()
-    # zoom first second
-    if zoom_first_sec:
-        plt.figure(figsize=(6,2.5))
-        plt.plot(times, signal, alpha=0.8)
-        plt.plot(times, avg, color='red', linewidth=1.5)
-        plt.xlim(0, min(1.0, times[-1]))
-        if np.isfinite(ymin) and np.isfinite(ymax) and (ymax - ymin) > 0:
-            pad = 0.1 * (ymax - ymin)
-            plt.ylim(ymin - pad, ymax + pad)
-        plt.xlabel("Time (s)")
-        plt.ylabel("Δφ [rad]")
-        plt.title(title + " (zoom)")
-        plt.grid(True, ls='--', alpha=0.4)
-        plt.tight_layout()
-        out_zoom = out_path.with_name(out_path.stem + "_zoom.png")
-        plt.savefig(out_zoom, dpi=150, bbox_inches='tight')
-        plt.close()
 
 def save_psd_plot(freqs, psd, out_path, f_dm=None, xlim_max=None):
     plt.figure(figsize=(8,3.6))
@@ -223,6 +211,17 @@ def main():
         vals_no_dm = None
     else:
         times_no_dm, dp_no_dm, vals_no_dm, ts_no_dm = run_no_dm(TEST_T_TOTAL)
+
+    combined_min = min(dp_dm.min(), dp_no_dm.min())
+    combined_max = max(dp_dm.max(), dp_no_dm.max())
+    pad = 0.1 * (combined_max - combined_min)
+    y_limits = (combined_min - pad, combined_max + pad)
+
+    # save and plot time-domain with shared y-axis
+    save_time_plot(times_dm, dp_dm, PLOTS_DIR / "phase_with_dm.png",
+                   title="Δφ(t) — With (visual-test) DM", y_limits=y_limits)
+    save_time_plot(times_no_dm, dp_no_dm, PLOTS_DIR / "phase_no_dm.png",
+                   title="Δφ(t) — No DM", y_limits=y_limits)
 
     # save and plot time-domain for no-DM
     save_time_plot(times_no_dm, dp_no_dm, PLOTS_DIR / "phase_no_dm.png", title="Δφ(t) — No DM")

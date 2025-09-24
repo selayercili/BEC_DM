@@ -14,6 +14,7 @@ Result object contains:
 """
 import numpy as np
 from types import SimpleNamespace
+import inspect
 
 # physical constants
 hbar = 1.054571817e-34
