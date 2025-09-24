@@ -22,6 +22,9 @@ PLOTS_DIR = BASE_DIR / "results" / "plots"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
+print("[PATH] running file:", __file__)
+print("[PATH] BASE_DIR:", BASE_DIR)
+
 # Ensure project root on path
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
