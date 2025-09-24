@@ -53,49 +53,55 @@ def compute_psd(times, signal):
 def save_time_plot(times, signal, out_path, title="Phase vs time",
                    zoom_first_sec=True, y_limits=None):
     """Save main and optional zoomed time-domain plots. Supports fixed y-limits."""
-    plt.figure(figsize=(8,3))
-    plt.plot(times, signal, alpha=0.8)
-    # running average
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    # --- Main plot ---
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.plot(times, signal, alpha=0.8)
     N = max(3, len(signal)//200)
     avg = np.convolve(signal, np.ones(N)/N, mode='same')
-    plt.plot(times, avg, color='red', linewidth=1.5, label=f"running avg (N={N})")
+    ax.plot(times, avg, linewidth=1.5, label=f"running avg (N={N})")
 
-    # y-axis scaling (shared or auto)
     if y_limits is not None:
-        plt.ylim(*y_limits)
+        ax.set_ylim(*y_limits)        # OO-style (prevents autoscale override)
+        ax.set_autoscale_on(False)    # lock it in
     else:
         ymin, ymax = np.min(signal), np.max(signal)
         pad = 0.1 * (ymax - ymin) if ymax > ymin else 1.0
-        plt.ylim(ymin - pad, ymax + pad)
+        ax.set_ylim(ymin - pad, ymax + pad)
 
-    plt.xlabel("Time (s)")
-    plt.ylabel("Δφ [rad]")
-    plt.title(title)
-    plt.grid(True, ls='--', alpha=0.4)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
-    plt.close()
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Δφ [rad]")
+    ax.set_title(title)
+    ax.grid(True, ls='--', alpha=0.4)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
+    # --- Zoom plot (keeps same y-range for fair comparison) ---
     if zoom_first_sec:
-        plt.figure(figsize=(6,2.5))
-        plt.plot(times, signal, alpha=0.8)
-        plt.plot(times, avg, color='red', linewidth=1.5)
-        plt.xlim(0, min(1.0, times[-1]))
+        fig2, ax2 = plt.subplots(figsize=(6, 2.5))
+        ax2.plot(times, signal, alpha=0.8)
+        ax2.plot(times, avg, linewidth=1.5)
+        ax2.set_xlim(0, min(1.0, times[-1]))
         if y_limits is not None:
-            plt.ylim(*y_limits)  # keep zoom on same vertical scale for fair comparison
+            ax2.set_ylim(*y_limits)
+            ax2.set_autoscale_on(False)
         else:
             ymin, ymax = np.min(signal), np.max(signal)
             pad = 0.1 * (ymax - ymin) if ymax > ymin else 1.0
-            plt.ylim(ymin - pad, ymax + pad)
-        plt.xlabel("Time (s)")
-        plt.ylabel("Δφ [rad]")
-        plt.title(title + " (zoom)")
-        plt.grid(True, ls='--', alpha=0.4)
-        plt.tight_layout()
+            ax2.set_ylim(ymin - pad, ymax + pad)
+        ax2.set_xlabel("Time (s)")
+        ax2.set_ylabel("Δφ [rad]")
+        ax2.set_title(title + " (zoom)")
+        ax2.grid(True, ls='--', alpha=0.4)
+        fig2.tight_layout()
         out_zoom = out_path.with_name(out_path.stem + "_zoom.png")
-        plt.savefig(out_zoom, dpi=150, bbox_inches='tight')
-        plt.close()
+        fig2.savefig(out_zoom, dpi=150, bbox_inches='tight')
+        plt.close(fig2)
+
 
 def save_psd_plot(freqs, psd, out_path, f_dm=None, xlim_max=None):
     plt.figure(figsize=(8,3.6))
@@ -228,13 +234,16 @@ def main():
     combined_max = float(max(dp_dm.max(), dp_no_dm.max()))
     pad = 0.1 * (combined_max - combined_min) if combined_max > combined_min else 1.0
     y_limits = (combined_min - pad, combined_max + pad)
+    print("[DEBUG] y_limits:", y_limits)
+    print("[DEBUG] ranges:",
+        "withDM=(", dp_dm.min(), dp_dm.max(), ")",
+        "noDM=(", dp_no_dm.min(), dp_no_dm.max(), ")")
 
-    # save and plot time-domain with shared y-axis
-    save_time_plot(times_dm, dp_dm, PLOTS_DIR / "phase_with_dm.png",
-               title="Δφ(t) — With (visual-test) DM", y_limits=y_limits)
-
-    save_time_plot(times_no_dm, dp_no_dm, PLOTS_DIR / "phase_no_dm.png",
-               title="Δφ(t) — No DM", y_limits=y_limits)
+    # NEW filenames to dodge any cached previews
+    save_time_plot(times_dm, dp_dm, PLOTS_DIR / "phase_with_dm_shared.png",
+                title="Δφ(t) — With (visual-test) DM", y_limits=y_limits)
+    save_time_plot(times_no_dm, dp_no_dm, PLOTS_DIR / "phase_no_dm_shared.png",
+                title="Δφ(t) — No DM", y_limits=y_limits)
 
     # PSD plots
     freqs_dm, psd_dm = compute_psd(times_dm, dp_dm)
