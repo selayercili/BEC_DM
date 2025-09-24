@@ -2,14 +2,12 @@
 """
 comp_plot.py
 
-Run a BEC simulation with a boosted test DM mass (for visualization) and a
-separate simulation without DM. Produce:
-  1) RAW Δφ(t) plots with a SHARED y-axis (fair comparison)
-  2) DETRENDED comparison plot (both runs on same axes)
-  3) RESIDUAL plot: (detrended_withDM - detrended_noDM)
-  4) PSDs for both runs
-
-Also fixes the end-of-series "drop" by using an edge-safe running average.
+Produces:
+  A) RAW Δφ(t) (shared y) for with-DM and no-DM
+  B) DETRENDED Δφ overlay and residual
+  C) DETRENDED center-phase overlay (common-mode sensitive)
+  D) Lock-in amplitude at f_DM for center-phase (with vs no DM)
+Keeps physics intact; no changes to BECSimulation internals.
 """
 
 import sys
@@ -34,19 +32,23 @@ from src.bec_simulation import BECSimulation
 from src.environment import create_environment_potential, neutron_star_potential
 from src.dark_matter import ul_dm_cosine_potential
 
-# ── User visual/debug parameters (boosted to be visible quickly) ───────────────
-TEST_MPHI_EV     = 1e-12      # eV
-TEST_AMPLITUDE_J = 1e-18      # J
-TEST_T_TOTAL     = 7.0        # s
+# ── Constants ─────────────────────────────────────────────────────────────────
+HBAR = 1.054571817e-34
+EV2J = 1.602176634e-19
 
-# Simulation grid/time parameters (match your normal run)
+# ── User visual/debug parameters ──────────────────────────────────────────────
+TEST_MPHI_EV     = 1e-12      # eV → f_DM ≈ 242 Hz (resolvable at dt=1e-3 s)
+TEST_AMPLITUDE_J = 1e-18      # stronger than physical to visualize
+TEST_T_TOTAL     = 7.0        # s
 NX = NY = 128
 DX = DY = 1.0
 DT = 1e-3
 G = 1e-52
 M_PARTICLE = 1.6726219e-27
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+FORCE_RERUN = False   # set True to always recompute, False to reuse NPZ if present
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def compute_psd(times, signal):
     dt = float(times[1] - times[0])
     fs = 1.0 / dt
@@ -55,29 +57,24 @@ def compute_psd(times, signal):
     return freqs, psd
 
 def running_avg_safe(x, N):
-    """Edge-safe running average using nearest padding (no end drop)."""
     N = max(3, int(N))
     return uniform_filter1d(x, size=N, mode="nearest")
 
 def detrend_linear(times, y):
-    """Fit y ≈ a*t + b and return (y - trend), (a, b)."""
     p = np.polyfit(times, y, 1)
     trend = np.polyval(p, times)
     return y - trend, (p[0], p[1])
 
-def save_time_plot(times, signal, out_path, title="Phase vs time",
-                   y_limits=None, avg_window=None, zoom_first_sec=False):
-    """Save a time plot (edge-safe average; optional fixed y-limits)."""
+def save_time_plot(times, signal, out_path, title,
+                   y_limits=None, avg_window=None):
     fig, ax = plt.subplots(figsize=(8, 3))
-    ax.plot(times, signal, alpha=0.8, label="Δφ(t)")
-    # edge-safe running average
+    ax.plot(times, signal, alpha=0.8, label="signal")
     N = avg_window if (avg_window is not None) else max(3, len(signal)//200)
     avg = running_avg_safe(signal, N)
     ax.plot(times, avg, linewidth=1.8, label=f"running avg (N={N})")
 
     if y_limits is not None:
-        ax.set_ylim(*y_limits)
-        ax.set_autoscale_on(False)
+        ax.set_ylim(*y_limits); ax.set_autoscale_on(False)
     else:
         ymin, ymax = np.min(signal), np.max(signal)
         pad = 0.1 * (ymax - ymin) if ymax > ymin else 1.0
@@ -92,200 +89,199 @@ def save_time_plot(times, signal, out_path, title="Phase vs time",
     fig.savefig(out_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
-    # Optional zoom (keeps same y-range only if y_limits provided)
-    if zoom_first_sec:
-        fig2, ax2 = plt.subplots(figsize=(6, 2.5))
-        ax2.plot(times, signal, alpha=0.8)
-        ax2.plot(times, avg, linewidth=1.8)
-        ax2.set_xlim(0, min(1.0, times[-1]))
-        if y_limits is not None:
-            ax2.set_ylim(*y_limits)
-            ax2.set_autoscale_on(False)
-        ax2.set_xlabel("Time (s)")
-        ax2.set_ylabel("Δφ [rad]")
-        ax2.set_title(title + " (zoom)")
-        ax2.grid(True, ls='--', alpha=0.4)
-        fig2.tight_layout()
-        out_zoom = out_path.with_name(out_path.stem + "_zoom.png")
-        fig2.savefig(out_zoom, dpi=150, bbox_inches='tight')
-        plt.close(fig2)
-
 def save_psd_plot(freqs, psd, out_path, f_dm=None, xlim_max=None):
     fig, ax = plt.subplots(figsize=(8, 3.6))
     ax.semilogy(freqs, psd)
     if f_dm is not None:
         ax.axvline(f_dm, color='red', linestyle='--', label=f"f_DM = {f_dm:.3e} Hz")
         ax.legend()
-    if xlim_max:
-        ax.set_xlim(0, xlim_max)
+    if xlim_max: ax.set_xlim(0, xlim_max)
     psd_nonzero = psd[np.isfinite(psd) & (psd > 0)]
     if psd_nonzero.size:
-        vlow = np.percentile(psd_nonzero, 1.0)
+        vlow  = np.percentile(psd_nonzero, 1.0)
         vhigh = np.percentile(psd_nonzero, 99.0)
-        if vhigh > vlow:
-            ax.set_ylim(max(vlow*0.1, 1e-40), vhigh*10)
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("PSD")
+        if vhigh > vlow: ax.set_ylim(max(vlow*0.1, 1e-40), vhigh*10)
+    ax.set_xlabel("Frequency (Hz)"); ax.set_ylabel("PSD")
     ax.grid(True, ls='--', alpha=0.4, which='both')
     fig.tight_layout()
-    fig.savefig(out_path, dpi=150, bbox_inches='tight')
-    plt.close(fig)
+    fig.savefig(out_path, dpi=150, bbox_inches='tight'); plt.close(fig)
+
+def lock_in_amplitude(times, y, f0, tau=0.2):
+    """
+    Simple lock-in: multiply by cos/sin(2π f0 t), low-pass via running average with window tau.
+    Returns amplitude(t) = sqrt(I^2 + Q^2) after smoothing.
+    """
+    t = np.asarray(times)
+    y = np.asarray(y)
+    omega = 2*np.pi*f0
+    cos_ref = np.cos(omega*t)
+    sin_ref = np.sin(omega*t)
+    I = y * cos_ref
+    Q = y * sin_ref
+    # smooth with window ~ tau seconds
+    dt = t[1]-t[0]
+    N = max(3, int(round(tau/dt)))
+    I_f = running_avg_safe(I, N)
+    Q_f = running_avg_safe(Q, N)
+    return np.sqrt(I_f**2 + Q_f**2)
 
 # ── Sim runners ────────────────────────────────────────────────────────────────
 def run_with_dm_test():
     sim = BECSimulation(nx=NX, ny=NY, dx=DX, dy=DY,
                         m_particle=M_PARTICLE, g=G, dt=DT, t_total=TEST_T_TOTAL)
     sim.initialize_wavefunction(kind="gaussian", width=8.0)
-
     V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
                                   amplitude_J=TEST_AMPLITUDE_J,
                                   m_phi_ev=TEST_MPHI_EV,
                                   phase0=0.0, v_dm=220e3, direction=0.0,
                                   spatial_modulation=True)
+    V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential,
+                                         center_offset=(0.0, 0.0), R_ns=1.0)
+    def V_total(coords, t): return V_dm(coords, t) + V_env
 
-    V_env = create_environment_potential(
-        sim.X, sim.Y, neutron_star_potential,
-        center_offset=(0.0, 0.0), R_ns=1.0
-    )
-
-    def V_total(coords, t):
-        return V_dm(coords, t) + V_env
-
-    # small potential diagnostic at center
-    ts = np.linspace(0, min(1.0, TEST_T_TOTAL), 400)
-    try:
-        vals = np.array([V_total((sim.X, sim.Y), tt)[sim.ny//2, sim.nx//2] for tt in ts])
-    except Exception:
-        vals = np.zeros_like(ts)
-    diag_path = PLOTS_DIR / "potential_diagnostic_with_dm.png"
-    fig, ax = plt.subplots(figsize=(5, 2))
-    ax.plot(ts, vals); ax.set_xlabel("time [s]"); ax.set_ylabel("V_dm+V_env [J]")
-    ax.set_title("Potential diagnostic (center) — with DM")
-    ax.grid(True, ls='--', alpha=0.4); fig.tight_layout()
-    fig.savefig(diag_path, dpi=140, bbox_inches='tight'); plt.close(fig)
-
-    print("[INFO] Running WITH-DM test simulation (boosted mass)...")
+    print("[INFO] Running WITH-DM simulation…")
     res = sim.run(V_function=V_total, snapshot_interval=0)
-    out_file = RESULTS_DIR / "delta_phi_test_visual.npz"
-    np.savez_compressed(out_file, times=res.times, delta_phi=res.delta_phi)
-    print("[INFO] Saved boosted-DM timeseries to:", out_file)
-    return res.times, res.delta_phi
+    np.savez_compressed(RESULTS_DIR / "delta_phi_test_visual.npz",
+                        times=res.times, delta_phi=res.delta_phi)
+    return res
 
 def run_no_dm(t_total):
     sim = BECSimulation(nx=NX, ny=NY, dx=DX, dy=DY,
                         m_particle=M_PARTICLE, g=G, dt=DT, t_total=t_total)
     sim.initialize_wavefunction(kind="gaussian", width=8.0)
-
     V_env = create_environment_potential(sim.X, sim.Y, neutron_star_potential)
+    def V_total(coords, t): return V_env
 
-    def V_total(coords, t):
-        return V_env
-
-    ts = np.linspace(0, min(1.0, t_total), 200)
-    vals = np.array([V_total((sim.X, sim.Y), tt)[sim.ny//2, sim.nx//2] for tt in ts])
-    diag_path = PLOTS_DIR / "potential_diagnostic_no_dm.png"
-    fig, ax = plt.subplots(figsize=(5, 2))
-    ax.plot(ts, vals); ax.set_xlabel("time [s]"); ax.set_ylabel("V_env [J]")
-    ax.set_title("Potential diagnostic (center) — no DM")
-    ax.grid(True, ls='--', alpha=0.4); fig.tight_layout()
-    fig.savefig(diag_path, dpi=140, bbox_inches='tight'); plt.close(fig)
-
-    print("[INFO] Running NO-DM simulation...")
+    print("[INFO] Running NO-DM simulation…")
     res = sim.run(V_function=V_total, snapshot_interval=0)
-    out_file = RESULTS_DIR / "delta_phi_no_dm_visual.npz"
-    np.savez_compressed(out_file, times=res.times, delta_phi=res.delta_phi)
-    print("[INFO] Saved no-DM timeseries to:", out_file)
-    return res.times, res.delta_phi
+    np.savez_compressed(RESULTS_DIR / "delta_phi_no_dm_visual.npz",
+                        times=res.times, delta_phi=res.delta_phi)
+    return res
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    # WITH DM (re-use if exists)
-    boosted_file = RESULTS_DIR / "delta_phi_test_visual.npz"
-    if boosted_file.exists():
-        d = np.load(boosted_file)
-        times_dm, dp_dm = d["times"], d["delta_phi"]
-        print("[INFO] Loaded existing boosted DM visual run.")
-    else:
-        times_dm, dp_dm = run_with_dm_test()
+    f_dm = (TEST_MPHI_EV * EV2J / HBAR) / (2*np.pi)
 
-    # NO DM (re-use if exists)
-    no_dm_file = RESULTS_DIR / "delta_phi_no_dm_visual.npz"
-    if no_dm_file.exists():
-        d = np.load(no_dm_file)
-        times_no_dm, dp_no_dm = d["times"], d["delta_phi"]
-        print("[INFO] Loaded existing no-DM visual run.")
-    else:
-        times_no_dm, dp_no_dm = run_no_dm(TEST_T_TOTAL)
+    # Load or run
+    dm_npz = RESULTS_DIR / "delta_phi_test_visual.npz"
+    no_npz = RESULTS_DIR / "delta_phi_no_dm_visual.npz"
 
-    # ── 1) RAW plots with SHARED y-axis ────────────────────────────────────────
-    combined_min = float(min(dp_dm.min(), dp_no_dm.min()))
-    combined_max = float(max(dp_dm.max(), dp_no_dm.max()))
+    if FORCE_RERUN or (not dm_npz.exists()):
+        res_dm = run_with_dm_test()
+    else:
+        print("[INFO] Loaded existing WITH-DM NPZ.")
+        d = np.load(dm_npz); res_dm = type("R", (), {})()
+        res_dm.times, res_dm.delta_phi = d["times"], d["delta_phi"]
+        # we don't have center/ref in NPZ; so recompute by running quickly if needed
+        # but for simplicity we accept Δφ-only for now in cached mode
+        res_dm.center_phases = None; res_dm.ref_phases = None
+
+    if FORCE_RERUN or (not no_npz.exists()):
+        res_no = run_no_dm(TEST_T_TOTAL)
+    else:
+        print("[INFO] Loaded existing NO-DM NPZ.")
+        d = np.load(no_npz); res_no = type("R", (), {})()
+        res_no.times, res_no.delta_phi = d["times"], d["delta_phi"]
+        res_no.center_phases = None; res_no.ref_phases = None
+
+    # ── A) RAW Δφ with shared y ────────────────────────────────────────────────
+    combined_min = float(min(res_dm.delta_phi.min(), res_no.delta_phi.min()))
+    combined_max = float(max(res_dm.delta_phi.max(), res_no.delta_phi.max()))
     pad = 0.1 * (combined_max - combined_min) if combined_max > combined_min else 1.0
     y_limits_raw = (combined_min - pad, combined_max + pad)
 
-    save_time_plot(times_dm, dp_dm, PLOTS_DIR / "phase_with_dm_raw_shared.png",
-                   title="Δφ(t) — With (visual-test) DM (raw, shared y)",
-                   y_limits=y_limits_raw, avg_window=35, zoom_first_sec=False)
+    save_time_plot(res_dm.times, res_dm.delta_phi,
+                   PLOTS_DIR / "phase_with_dm_raw_shared.png",
+                   "Δφ(t) — With DM (raw, shared y)",
+                   y_limits=y_limits_raw, avg_window=35)
 
-    save_time_plot(times_no_dm, dp_no_dm, PLOTS_DIR / "phase_no_dm_raw_shared.png",
-                   title="Δφ(t) — No DM (raw, shared y)",
-                   y_limits=y_limits_raw, avg_window=35, zoom_first_sec=False)
+    save_time_plot(res_no.times, res_no.delta_phi,
+                   PLOTS_DIR / "phase_no_dm_raw_shared.png",
+                   "Δφ(t) — No DM (raw, shared y)",
+                   y_limits=y_limits_raw, avg_window=35)
 
-    # ── 2) DETREND both and plot together (best apples-to-apples view) ────────
-    detr_dm, coef_dm = detrend_linear(times_dm, dp_dm)
-    detr_no, coef_no = detrend_linear(times_no_dm, dp_no_dm)
+    # ── B) DETRENDED Δφ overlay + residual ────────────────────────────────────
+    detr_dm, _ = detrend_linear(res_dm.times, res_dm.delta_phi)
+    detr_no, _ = detrend_linear(res_no.times, res_no.delta_phi)
 
+    # overlay
     fig, ax = plt.subplots(figsize=(8, 3))
-    ax.plot(times_dm, running_avg_safe(detr_dm, 35), label="With DM (detrended)")
-    ax.plot(times_no_dm, running_avg_safe(detr_no, 35), label="No DM (detrended)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Δφ detrended [rad]")
+    ax.plot(res_dm.times, running_avg_safe(detr_dm, 35), label="With DM (detrended)")
+    ax.plot(res_no.times, running_avg_safe(detr_no, 35), label="No DM (detrended)")
+    ax.set_xlabel("Time (s)"); ax.set_ylabel("Δφ detrended [rad]")
     ax.set_title("Detrended Δφ(t): With DM vs No DM")
-    ax.grid(True, ls='--', alpha=0.4)
-    ax.legend()
-    fig.tight_layout()
+    ax.grid(True, ls='--', alpha=0.4); ax.legend(); fig.tight_layout()
     fig.savefig(PLOTS_DIR / "phase_detrended_overlay.png", dpi=150, bbox_inches='tight')
     plt.close(fig)
 
-    # ── 3) RESIDUAL = (With DM detrended) - (No DM detrended) ─────────────────
-    # (Assumes same time grid lengths; if not, we interpolate to the shorter.)
-    if len(times_dm) == len(times_no_dm) and np.allclose(times_dm, times_no_dm):
-        times_res = times_dm
+    # residual
+    if len(res_dm.times) == len(res_no.times) and np.allclose(res_dm.times, res_no.times):
+        times_res = res_dm.times
         resid = detr_dm - detr_no
     else:
-        # Align to the shorter range via interpolation
-        tmin = max(times_dm.min(), times_no_dm.min())
-        tmax = min(times_dm.max(), times_no_dm.max())
-        times_res = np.linspace(tmin, tmax, min(len(times_dm), len(times_no_dm)))
-        resid = np.interp(times_res, times_dm, detr_dm) - np.interp(times_res, times_no_dm, detr_no)
+        tmin = max(res_dm.times.min(), res_no.times.min())
+        tmax = min(res_dm.times.max(), res_no.times.max())
+        times_res = np.linspace(tmin, tmax, min(len(res_dm.times), len(res_no.times)))
+        resid = np.interp(times_res, res_dm.times, detr_dm) - \
+                np.interp(times_res, res_no.times, detr_no)
 
     fig, ax = plt.subplots(figsize=(8, 3))
     ax.plot(times_res, running_avg_safe(resid, 35))
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Residual [rad]")
+    ax.set_xlabel("Time (s)"); ax.set_ylabel("Residual [rad]")
     ax.set_title("Residual (With DM detrended − No DM detrended)")
-    ax.grid(True, ls='--', alpha=0.4)
-    fig.tight_layout()
+    ax.grid(True, ls='--', alpha=0.4); fig.tight_layout()
     fig.savefig(PLOTS_DIR / "phase_residual_detrended.png", dpi=150, bbox_inches='tight')
     plt.close(fig)
 
-    # ── 4) PSDs (unchanged) ───────────────────────────────────────────────────
-    freqs_dm, psd_dm = compute_psd(times_dm, dp_dm)
-    save_psd_plot(freqs_dm, psd_dm, PLOTS_DIR / "psd_with_dm.png", f_dm=None, xlim_max=None)
+    # ── C) DETRENDED center-phase overlay (common-mode sensitive) ─────────────
+    # If we have center_phases (when FORCE_RERUN True), use them. Otherwise skip gracefully.
+    if getattr(res_dm, "center_phases", None) is not None and getattr(res_no, "center_phases", None) is not None:
+        c_dm, _ = detrend_linear(res_dm.times, res_dm.center_phases)
+        c_no, _ = detrend_linear(res_no.times, res_no.center_phases)
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(res_dm.times, running_avg_safe(c_dm, 35), label="With DM (center, detrended)")
+        ax.plot(res_no.times, running_avg_safe(c_no, 35), label="No DM (center, detrended)")
+        ax.set_xlabel("Time (s)"); ax.set_ylabel("Center phase detrended [rad]")
+        ax.set_title("Detrended center phase (common-mode)")
+        ax.grid(True, ls='--', alpha=0.4); ax.legend(); fig.tight_layout()
+        fig.savefig(PLOTS_DIR / "center_phase_detrended_overlay.png", dpi=150, bbox_inches='tight')
+        plt.close(fig)
+    else:
+        print("[NOTE] center_phases not available from NPZ; set FORCE_RERUN=True to compute common-mode plots.")
 
-    freqs_no_dm, psd_no_dm = compute_psd(times_no_dm, dp_no_dm)
-    save_psd_plot(freqs_no_dm, psd_no_dm, PLOTS_DIR / "psd_no_dm.png", f_dm=None, xlim_max=None)
+    # ── D) Lock-in amplitude at f_DM for center-phase ─────────────────────────
+    if getattr(res_dm, "center_phases", None) is not None and getattr(res_no, "center_phases", None) is not None:
+        # remove slow drift first so lock-in sees the oscillation
+        c_dm_detr, _ = detrend_linear(res_dm.times, res_dm.center_phases)
+        c_no_detr, _ = detrend_linear(res_no.times, res_no.center_phases)
+        amp_dm = lock_in_amplitude(res_dm.times, c_dm_detr, f_dm, tau=0.2)
+        amp_no = lock_in_amplitude(res_no.times, c_no_detr, f_dm, tau=0.2)
 
-    # Numeric dump for later analysis
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(res_dm.times, amp_dm, label="With DM")
+        ax.plot(res_no.times, amp_no, label="No DM")
+        ax.set_xlabel("Time (s)"); ax.set_ylabel("Lock-in amplitude [rad]")
+        ax.set_title(f"Lock-in amplitude at f_DM≈{f_dm:.1f} Hz (center phase)")
+        ax.grid(True, ls='--', alpha=0.4); ax.legend(); fig.tight_layout()
+        fig.savefig(PLOTS_DIR / "center_phase_lockin.png", dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
+    # ── PSDs of Δφ (as before) ────────────────────────────────────────────────
+    freqs_dm, psd_dm = compute_psd(res_dm.times, res_dm.delta_phi)
+    save_psd_plot(freqs_dm, psd_dm, PLOTS_DIR / "psd_with_dm.png", f_dm=f_dm, xlim_max=None)
+    freqs_no, psd_no = compute_psd(res_no.times, res_no.delta_phi)
+    save_psd_plot(freqs_no, psd_no, PLOTS_DIR / "psd_no_dm.png", f_dm=f_dm, xlim_max=None)
+
+    # store PSD arrays too
     np.savez_compressed(PLOTS_DIR / "psd_visual_data.npz",
                         freqs_dm=freqs_dm, psd_dm=psd_dm,
-                        freqs_no_dm=freqs_no_dm, psd_no_dm=psd_no_dm)
+                        freqs_no=freqs_no, psd_no=psd_no)
 
-    print("[DONE] Generated:")
-    print(" - phase_with_dm_raw_shared.png, phase_no_dm_raw_shared.png")
-    print(" - phase_detrended_overlay.png, phase_residual_detrended.png")
-    print(" - psd_with_dm.png, psd_no_dm.png")
-    print("Potential diagnostics saved as potential_diagnostic_with_dm.png and potential_diagnostic_no_dm.png")
+    print("[DONE] Wrote:")
+    print("  phase_with_dm_raw_shared.png, phase_no_dm_raw_shared.png")
+    print("  phase_detrended_overlay.png, phase_residual_detrended.png")
+    print("  center_phase_detrended_overlay.png (if FORCE_RERUN), center_phase_lockin.png (if FORCE_RERUN)")
+    print("  psd_with_dm.png, psd_no_dm.png")
 
 if __name__ == "__main__":
     main()
