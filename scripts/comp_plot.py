@@ -231,9 +231,10 @@ def main():
 
     # save and plot time-domain with shared y-axis
     save_time_plot(times_dm, dp_dm, PLOTS_DIR / "phase_with_dm.png",
-                   title="Δφ(t) — With (visual-test) DM", y_limits=y_limits)
+               title="Δφ(t) — With (visual-test) DM", y_limits=y_limits)
+
     save_time_plot(times_no_dm, dp_no_dm, PLOTS_DIR / "phase_no_dm.png",
-                   title="Δφ(t) — No DM", y_limits=y_limits)
+               title="Δφ(t) — No DM", y_limits=y_limits)
 
     # PSD plots
     freqs_dm, psd_dm = compute_psd(times_dm, dp_dm)
