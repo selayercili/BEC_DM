@@ -236,7 +236,7 @@ def main():
     combined_min = float(min(dp_dm.min(), dp_no_dm.min()))
     combined_max = float(max(dp_dm.max(), dp_no_dm.max()))
     pad = 0.1 * (combined_max - combined_min) if combined_max > combined_min else 1.0
-    y_limits = (-400, 400)
+    y_limits = (0, 400)
     print("[DEBUG] y_limits:", y_limits)
     print("[DEBUG] ranges:",
         "withDM=(", dp_dm.min(), dp_dm.max(), ")",
