@@ -46,13 +46,13 @@ G  = 1e-52               # your existing nonlinearity
 
 # Two-state coupling (opposite signs; physically corresponds to states with opposite effective coupling)
 COUPLING_1 = +1.0
-COUPLING_2 = -1.0
+COUPLING_2 = +1.0
 
 # Dark-matter parameters (physically small; no boosting)
 M_PHI_EV   = 1e-12                       # eV (ULDM "mass")
 OMEGA_DM   = (M_PHI_EV * EV2J) / HBAR    # rad/s
 OMEGA_BAR  = OMEGA_DM / OMEGA_TR         # dimensionless DM frequency Ω = ω_DM/ω_tr
-EPSILON    = 0                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
+EPSILON    = 1e-5                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
 
 # tiny spatial structure so the drive isn't perfectly uniform (breaks common-mode)
 SPATIAL_EPS   = 1e-3                     # dimensionless modulation strength ≪ 1
