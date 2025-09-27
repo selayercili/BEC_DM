@@ -177,8 +177,8 @@ class BECSimulation:
             psi_k *= Kprop_dt
             psi = np.fft.ifft2(psi_k)
 
-            # second half potential (use same Vt)
-            psi = self._apply_potential_step(psi, Vt, half_dt)
+            Vt2 = call_V((self.X, self.Y), t + self.dt)  # V at time t + dt
+            psi = self._apply_potential_step(psi, Vt2, half_dt)
 
             # renormalize to avoid drift
             current_norm = np.sum(np.abs(psi)**2) * self.dx * self.dy

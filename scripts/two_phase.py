@@ -153,6 +153,14 @@ def run_state(coupling_scale, tag, f_dm):
                                          neutron_star_potential,
                                          center_offset=(0.0, 0.0),
                                          R_ns=1.0)
+    
+    V_env = V_env - float(V_env[sim.ny//2, sim.nx//2])   # subtract center value
+    V_env *= 1e-30    # DEBUG: shrink env by 30 orders
+    
+    # Stronger separation so we actually *see* Δφ while testing:
+    COUPLING_1 = 1.0
+    COUPLING_2 = -1.0
+    AMPLITUDE_J = 1e-17   # temporary for visibility
 
     if DEBUG:
         probe_dm_and_env(sim, V_dm, V_env, f_dm)
