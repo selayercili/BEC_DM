@@ -174,8 +174,8 @@ def main():
     fs   = 1.0/DT
 
     # Run the two states (opposite couplings)
-    r1 = run_state("c_plus",  +1.0, EPSILON, OMEGA_BAR, SPATIAL_EPS, SPATIAL_THETA)
-    r2 = run_state("c_minus", -1.0, EPSILON, OMEGA_BAR, SPATIAL_EPS, SPATIAL_THETA)
+    r1 = run_state("c1",  COUPLING_1, EPSILON, OMEGA_BAR, SPATIAL_EPS, SPATIAL_THETA)
+    r2 = run_state("c2", COUPLING_2, EPSILON, OMEGA_BAR, SPATIAL_EPS, SPATIAL_THETA)
 
     t    = np.asarray(r1.times)
     phi1 = np.unwrap(np.asarray(r1.center_phases, dtype=float))
