@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/two_phase.py  (debug-instrumented)
+# scripts/two_phase.py  — robust, debuggable two-state differential phase runner
 
 from pathlib import Path
 import sys, json
@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 from scipy.signal import welch
 from scipy.ndimage import uniform_filter1d
 
-# ---- paths ------------------------------------------------------------------
+# =========================
+# Project paths (src/scripts)
+# =========================
 THIS = Path(__file__).resolve()
 ROOT = THIS.parents[1]
 SRC  = ROOT / "src"
@@ -20,22 +22,33 @@ from src.bec_simulation import BECSimulation
 from src.environment import create_environment_potential, neutron_star_potential
 from src.dark_matter import ul_dm_cosine_potential
 
-# ---- config -----------------------------------------------------------------
-DEBUG = True
+# =========================
+# Output directories
+# =========================
 RESULTS_TS = ROOT / "results" / "two_state" / "time_series"
 PLOTS_DIR  = ROOT / "results" / "two_state" / "plots"
 RESULTS_TS.mkdir(parents=True, exist_ok=True)
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
+# =========================
+# Global constants / params
+# =========================
 HBAR = 1.054571817e-34
 EV2J = 1.602176634e-19
 
-# Try a stronger drive while debugging so we can *see* it clearly
-M_PHI_EV    = 1e-12      # ULDM mass [eV]  -> f_DM ≈ 242 Hz
-AMPLITUDE_J = 5e-18      # ↑ was 1e-18; boost for visibility
-COUPLING_1  = 1.00
-COUPLING_2  = 0.40       # ↑ larger separation to avoid common-mode cancel
+# ---- DM parameters (make first run clearly visible; dial back later)
+M_PHI_EV     = 1e-12     # ULDM mass [eV] → f_DM ≈ 242 Hz
+DM_AMPLITUDE = 1e-17     # base DM potential amplitude [J] (debug-friendly)
 
+# ---- Couplings for the two states (opposite sign = large Δφ)
+COUPLING_1 =  1.0
+COUPLING_2 = -1.0
+
+# ---- Environment scaling for numerical conditioning
+ENV_SCALE   = 1e-30      # multiply entire environment by this (debug)
+ENV_REMOVE_DC = True     # subtract env center value (removes huge DC safely)
+
+# ---- GPE / grid
 NX = NY = 128
 DX = DY = 1.0
 DT = 1e-3
@@ -44,16 +57,21 @@ G  = 1e-52
 M_PARTICLE = 1.6726219e-27
 
 FORCE_RERUN = True
+DEBUG = True
 
-# ---- helpers ----------------------------------------------------------------
-def running_avg(x, N): return uniform_filter1d(np.asarray(x), size=max(3, int(N)), mode="nearest")
+# =========================
+# Helpers
+# =========================
+def running_avg(x, N): 
+    return uniform_filter1d(np.asarray(x), size=max(3, int(N)), mode="nearest")
 
 def detrend_linear(t, y):
     p = np.polyfit(t, y, 1)
     return y - np.polyval(p, t), p
 
 def compute_psd(times, y):
-    if len(times) < 16:
+    times = np.asarray(times); y = np.asarray(y)
+    if len(times) < 16 or len(y) < 16:
         return np.array([]), np.array([])
     dt = float(times[1] - times[0])
     fs = 1.0 / dt
@@ -61,8 +79,9 @@ def compute_psd(times, y):
     return f, Pxx
 
 def lock_in_amplitude(times, y, f0, tau=0.2):
-    if len(times) < 4: return np.zeros_like(times)
     t = np.asarray(times); y = np.asarray(y)
+    if len(t) < 4:
+        return np.zeros_like(t)
     w = 2*np.pi*f0
     N = int(max(3, tau / (t[1]-t[0])))
     I = running_avg(y * np.cos(w*t), N)
@@ -71,7 +90,7 @@ def lock_in_amplitude(times, y, f0, tau=0.2):
 
 def save_time_plot(t, y, path, title, ylabel="[rad]", avgN=35):
     fig, ax = plt.subplots(figsize=(8,3))
-    ax.plot(t, y, alpha=0.85, label="signal")
+    ax.plot(t, y, alpha=0.9, label="signal")
     if len(y) >= avgN:
         ax.plot(t, running_avg(y, avgN), lw=1.8, label=f"running avg (N={avgN})")
     ax.set_xlabel("Time (s)"); ax.set_ylabel(ylabel); ax.set_title(title)
@@ -83,19 +102,19 @@ def save_psd_plot(f, P, path, f_dm=None, title="PSD", ylabel="PSD [arb.]"):
     if len(f) > 0:
         ax.semilogy(f, P)
     else:
-        ax.text(0.5, 0.5, "PSD not computed (too few samples)", ha='center', va='center')
+        ax.text(0.5, 0.5, "PSD not computed (too few/degenerate samples)",
+                ha='center', va='center')
     if f_dm is not None and len(f) > 0:
         ax.axvline(f_dm, color="red", ls="--", label=f"f_DM ≈ {f_dm:.2f} Hz"); ax.legend()
     ax.set_xlabel("Frequency (Hz)"); ax.set_ylabel(ylabel); ax.set_title(title)
     ax.grid(True, ls='--', alpha=0.4, which='both'); fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches='tight'); plt.close(fig)
 
-# ---- probes -----------------------------------------------------------------
 def probe_dm_and_env(sim, V_dm_callable, V_env, f_dm):
-    """Print quick checks so we know signals are present *before* running GPE."""
+    """Print quick checks to ensure signals are present before running GPE."""
     t0 = 0.0
-    tQ = 0.25 / f_dm        # quarter period
-    tH = 0.5 / f_dm         # half period
+    tQ = 0.25 / f_dm
+    tH = 0.5  / f_dm
     center = (sim.ny//2, sim.nx//2)
 
     Vdm_t0 = V_dm_callable((sim.X, sim.Y), t0)
@@ -120,8 +139,6 @@ def probe_dm_and_env(sim, V_dm_callable, V_env, f_dm):
 
 def summarize_phase(name, t, phi):
     phi = np.asarray(phi)
-    if phi.ndim != 1 or len(phi) != len(t):
-        print(f"[WARN] {name}: phase array shape {phi.shape} vs times {len(t)}")
     dphi = np.diff(phi) if len(phi) > 1 else np.array([0.0])
     trend = np.polyfit(t, phi, 1) if len(t) >= 2 else [np.nan, np.nan]
     out = {
@@ -137,41 +154,48 @@ def summarize_phase(name, t, phi):
         print(f"  - {k}: {v:.6e}")
     return out
 
-# ---- single-state run -------------------------------------------------------
-def run_state(coupling_scale, tag, f_dm):
+# =========================
+# Single-state run
+# =========================
+def run_state(coupling_scale: float, tag: str, f_dm: float,
+              dm_amplitude_j: float, env_scale: float):
     sim = BECSimulation(nx=NX, ny=NY, dx=DX, dy=DY,
                         m_particle=M_PARTICLE, g=G, dt=DT, t_total=T_TOTAL)
     sim.initialize_wavefunction(kind="gaussian", width=8.0)
 
+    # Build DM potential callable (time-dependent)
     V_dm = ul_dm_cosine_potential((sim.X, sim.Y),
-                                  amplitude_J=AMPLITUDE_J * coupling_scale,
+                                  amplitude_J=dm_amplitude_j * coupling_scale,
                                   m_phi_ev=M_PHI_EV,
                                   phase0=0.0, v_dm=220e3, direction=0.0,
                                   spatial_modulation=True)
 
+    # Environment (static array)
     V_env = create_environment_potential(sim.X, sim.Y,
                                          neutron_star_potential,
                                          center_offset=(0.0, 0.0),
                                          R_ns=1.0)
-    
-    V_env = V_env - float(V_env[sim.ny//2, sim.nx//2])   # subtract center value
-    V_env *= 1e-30    # DEBUG: shrink env by 30 orders
-    
-    # Stronger separation so we actually *see* Δφ while testing:
-    COUPLING_1 = 1.0
-    COUPLING_2 = -1.0
-    AMPLITUDE_J = 1e-17   # temporary for visibility
+
+    # Remove huge DC and scale for numerical conditioning (debug mode)
+    if ENV_REMOVE_DC:
+        V_env = V_env - float(V_env[sim.ny//2, sim.nx//2])
+    if env_scale is not None:
+        V_env = V_env * float(env_scale)
 
     if DEBUG:
         probe_dm_and_env(sim, V_dm, V_env, f_dm)
+        center = (sim.ny//2, sim.nx//2)
+        print("[CHECK] V_env_center=", float(V_env[center]))
+        print("[CHECK] V_dm_center@t0=", float(V_dm((sim.X, sim.Y), 0.0)[center]))
 
     def V_total(coords, t):
+        # IMPORTANT: time-dependent V must be called each step inside BECSimulation
         return V_dm(coords, t) + V_env
 
     print(f"[INFO] Running state {tag} with coupling c={coupling_scale:.3f} …")
     res = sim.run(V_function=V_total, snapshot_interval=0)
 
-    # Save raw series for inspection
+    # Save raw series
     np.savez_compressed(RESULTS_TS / f"two_state_{tag}.npz",
                         times=res.times,
                         center_phases=res.center_phases,
@@ -179,21 +203,24 @@ def run_state(coupling_scale, tag, f_dm):
                         delta_phi=res.delta_phi)
     return res
 
-# ---- main -------------------------------------------------------------------
+# =========================
+# Main
+# =========================
 def main():
     f_dm = (M_PHI_EV * EV2J / HBAR) / (2*np.pi)
 
-    # run both states fresh (easier while debugging)
-    res1 = run_state(COUPLING_1, "c1", f_dm)
-    res2 = run_state(COUPLING_2, "c2", f_dm)
+    # run fresh (debug)
+    res1 = run_state(COUPLING_1, "c1", f_dm, DM_AMPLITUDE, ENV_SCALE)
+    res2 = run_state(COUPLING_2, "c2", f_dm, DM_AMPLITUDE, ENV_SCALE)
 
     t    = np.asarray(res1.times)
     phi1 = np.unwrap(np.asarray(res1.center_phases, dtype=float))
     phi2 = np.unwrap(np.asarray(res2.center_phases, dtype=float))
 
-    # Sanity: plot RAW φ1, φ2 and Δφ (before detrend)
+    # Raw plots (see if runs diverge)
     save_time_plot(t, phi1, PLOTS_DIR / "phi1_raw.png", "φ1 center phase (raw)")
     save_time_plot(t, phi2, PLOTS_DIR / "phi2_raw.png", "φ2 center phase (raw)")
+
     dphi_raw = phi1 - phi2
     save_time_plot(t, dphi_raw, PLOTS_DIR / "dphi_raw.png", "Δφ_int (raw)")
 
@@ -217,25 +244,25 @@ def main():
                    title=f"Two-state lock-in amplitude at f_DM≈{f_dm:.2f} Hz",
                    ylabel="Lock-in amplitude [rad]")
 
-    # Debug summary file
     summary = {
         "grid": {"nx": NX, "ny": NY, "dx": DX, "dy": DY},
         "sim":  {"dt": DT, "t_total": T_TOTAL, "n_steps": int(round(T_TOTAL/DT))},
-        "dm":   {"m_phi_ev": M_PHI_EV, "amplitude_J": AMPLITUDE_J,
+        "dm":   {"m_phi_ev": M_PHI_EV, "amplitude_J": DM_AMPLITUDE,
                  "coupling_1": COUPLING_1, "coupling_2": COUPLING_2,
                  "f_dm_hz": f_dm},
+        "env":  {"scale": ENV_SCALE, "remove_dc": ENV_REMOVE_DC},
         "phi1": s1, "phi2": s2, "dphi_raw": sR,
         "detrend_slope_rad_per_s": float(trend[0]),
         "dphi_detr_std": float(np.std(dphi_detr)),
         "psd_points": int(len(f)),
-        "notes": "If phi1/phi2 std ≈ 0 or dphi_raw std ≈ 0, the phase capture in BECSimulation is likely constant."
+        "notes": "Opposite couplings and scaled/DC-removed environment to avoid numerical erasure."
     }
     with open(RESULTS_TS / "debug_summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
 
     print("\n[DEBUG] Summary:")
     print(json.dumps(summary, indent=2))
-    print("\n[DONE] Debug plots →", PLOTS_DIR)
+    print("\n[DONE] Plots →", PLOTS_DIR)
     print("[DONE] Debug summary →", RESULTS_TS / "debug_summary.json")
 
 if __name__ == "__main__":
