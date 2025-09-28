@@ -40,7 +40,7 @@ M_PARTICLE = 1.6726219e-27               # kg (proton used in your solver)
 # Grid / solver settings (kept close to your working setup)
 NX = NY = 128
 DX = DY = 1.0            # treated as units of the harmonic oscillator length (dimensionless X,Y)
-DT = 5e-4                # seconds (solver runs in SI time; we feed it V in Joules)
+DT = 1e-3                # seconds (solver runs in SI time; we feed it V in Joules)
 T_TOTAL = 15.0           # seconds (longer run → narrower PSD bins)
 G  = 1e-52               # your existing nonlinearity
 
