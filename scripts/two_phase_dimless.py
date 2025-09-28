@@ -45,8 +45,8 @@ T_TOTAL = 30.0           # seconds (longer run → narrower PSD bins)
 G  = 1e-52               # your existing nonlinearity
 
 # Two-state coupling (opposite signs; physically corresponds to states with opposite effective coupling)
-COUPLING_1 = +1.0
-COUPLING_2 = -1.0
+COUPLING_1 = -1.0
+COUPLING_2 = +1.0
 
 # Dark-matter parameters (physically small; no boosting)
 M_PHI_EV   = 1e-12                       # eV (ULDM "mass")
