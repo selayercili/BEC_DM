@@ -38,7 +38,7 @@ EV2J = 1.602176634e-19
 
 # ---- DM parameters (make first run clearly visible; dial back later)
 M_PHI_EV     = 1e-12     # ULDM mass [eV] → f_DM ≈ 242 Hz
-DM_AMPLITUDE = 1e-17     # base DM potential amplitude [J] (debug-friendly)
+DM_AMPLITUDE = 5e-17     # base DM potential amplitude [J] (debug-friendly)
 
 # ---- Couplings for the two states (opposite sign = large Δφ)
 COUPLING_1 =  1.0
@@ -52,7 +52,7 @@ ENV_REMOVE_DC = True     # subtract env center value (removes huge DC safely)
 NX = NY = 128
 DX = DY = 1.0
 DT = 1e-3
-T_TOTAL = 7.0
+T_TOTAL = 20.0
 G  = 1e-52
 M_PARTICLE = 1.6726219e-27
 

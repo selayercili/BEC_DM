@@ -46,7 +46,7 @@ G  = 1e-52               # your existing nonlinearity
 
 # Two-state coupling (opposite signs; physically corresponds to states with opposite effective coupling)
 COUPLING_1 = +1.0
-COUPLING_2 = +1.0
+COUPLING_2 = -1.0
 
 # Dark-matter parameters (physically small; no boosting)
 M_PHI_EV   = 1e-12                       # eV (ULDM "mass")
@@ -64,6 +64,19 @@ LOCKIN_TAU_S  = 0.02
 DEBUG = True
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+def local_snr_near(f, P, f_dm, band_hz=2.0, guard_hz=5.0, nbhd_hz=20.0):
+    """Return (snr, signal_power, noise_floor) with zero-safe guards."""
+    if len(f) == 0 or len(P) == 0:
+        return float('nan'), 0.0, 0.0
+    band = (f > f_dm - band_hz) & (f < f_dm + band_hz)
+    nbhd = ((f > f_dm - nbhd_hz) & (f < f_dm - guard_hz)) | \
+           ((f > f_dm + guard_hz) & (f < f_dm + nbhd_hz))
+    signal_power = float(np.max(P[band])) if band.any() else 0.0
+    noise_floor  = float(np.median(P[nbhd])) if nbhd.any() else 0.0
+    if noise_floor <= 0.0:
+        return (float('inf') if signal_power > 0 else float('nan')), signal_power, noise_floor
+    return signal_power / noise_floor, signal_power, noise_floor
+
 def highpass(y, fs, fc=50.0, order=2):
     b, a = butter(order, fc/(0.5*fs), btype='highpass')
     return filtfilt(b, a, y)
@@ -205,8 +218,7 @@ def main():
     nbhd = ((f > f_dm-20) & (f < f_dm-5)) | ((f > f_dm+5) & (f < f_dm+20))
     signal_power = float(P[band].max()) if band.any() else 0.0
     noise_floor  = float(np.median(P[nbhd])) if nbhd.any() else 1e-12
-    snr = signal_power / noise_floor
-
+    snr, signal_power, noise_floor = local_snr_near(f, P, f_dm)
     # Lock-in detector at f_DM
     amp = lock_in(t, dphi_detr, f_dm, tau=LOCKIN_TAU_S)
     save_time_plot(t, amp, PLOTS_DIR / "lockin_amp.png",
@@ -225,7 +237,9 @@ def main():
         "phi1": s1, "phi2": s2, "dphi": sd,
         "analysis": {"hpf_cutoff_hz": HPF_CUTOFF_HZ,
                      "lockin_tau_s": LOCKIN_TAU_S,
-                     "local_snr_near_fdm": snr}
+                     "local_snr_near_fdm": snr,
+                     "signal_power": signal_power,
+                     "noise_floor": noise_floor}
     }
     with open(RESULTS_TS / "summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
