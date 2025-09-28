@@ -40,7 +40,7 @@ M_PARTICLE = 1.6726219e-27               # kg (proton used in your solver)
 # Grid / solver settings (kept close to your working setup)
 NX = NY = 128
 DX = DY = 1.0            # treated as units of the harmonic oscillator length (dimensionless X,Y)
-DT = 1e-3                # seconds (solver runs in SI time; we feed it V in Joules)
+DT = 5e-4                # seconds (solver runs in SI time; we feed it V in Joules)
 T_TOTAL = 15.0           # seconds (longer run → narrower PSD bins)
 G  = 1e-52               # your existing nonlinearity
 
@@ -55,7 +55,7 @@ OMEGA_BAR  = OMEGA_DM / OMEGA_TR         # dimensionless DM frequency Ω = ω_DM
 EPSILON    = 1e-5                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
 
 # tiny spatial structure so the drive isn't perfectly uniform (breaks common-mode)
-SPATIAL_EPS   = 0                     # dimensionless modulation strength ≪ 1
+SPATIAL_EPS   = 1e-3                     # dimensionless modulation strength ≪ 1
 SPATIAL_THETA = 0.0                      # direction of weak gradient
 
 # Analysis settings
