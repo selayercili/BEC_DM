@@ -41,15 +41,15 @@ M_PARTICLE = 1.6726219e-27               # kg (proton used in your solver)
 NX = NY = 128
 DX = DY = 1.0            # treated as units of the harmonic oscillator length (dimensionless X,Y)
 DT = 1e-3                # seconds (solver runs in SI time; we feed it V in Joules)
-T_TOTAL = 30.0           # seconds (longer run → narrower PSD bins)
+T_TOTAL = 15.0           # seconds (longer run → narrower PSD bins)
 G  = 1e-52               # your existing nonlinearity
 
 # Two-state coupling (opposite signs; physically corresponds to states with opposite effective coupling)
-COUPLING_1 = -1.0
-COUPLING_2 = +1.0
+COUPLING_1 = +1.0
+COUPLING_2 = -1.0
 
 # Dark-matter parameters (physically small; no boosting)
-M_PHI_EV   = 1e-12                       # eV (ULDM "mass")
+M_PHI_EV   = 8e-12                       # eV (ULDM "mass")
 OMEGA_DM   = (M_PHI_EV * EV2J) / HBAR    # rad/s
 OMEGA_BAR  = OMEGA_DM / OMEGA_TR         # dimensionless DM frequency Ω = ω_DM/ω_tr
 EPSILON    = 1e-5                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
