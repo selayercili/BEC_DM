@@ -49,13 +49,13 @@ COUPLING_1 = +1.0
 COUPLING_2 = -1.0
 
 # Dark-matter parameters (physically small; no boosting)
-M_PHI_EV   = 8e-13                       # eV (ULDM "mass")
+M_PHI_EV   = 1e-12                       # eV (ULDM "mass")
 OMEGA_DM   = (M_PHI_EV * EV2J) / HBAR    # rad/s
 OMEGA_BAR  = OMEGA_DM / OMEGA_TR         # dimensionless DM frequency Ω = ω_DM/ω_tr
 EPSILON    = 1e-5                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
 
 # tiny spatial structure so the drive isn't perfectly uniform (breaks common-mode)
-SPATIAL_EPS   = 1e-3                     # dimensionless modulation strength ≪ 1
+SPATIAL_EPS   = 0                     # dimensionless modulation strength ≪ 1
 SPATIAL_THETA = 0.0                      # direction of weak gradient
 
 # Analysis settings
