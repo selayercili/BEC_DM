@@ -64,8 +64,12 @@ SPATIAL_THETA = 0.0                      # direction of weak gradient
 HPF_CUTOFF_HZ = 50.0                     # remove slow drift (well below f_DM≈242 Hz)
 LOCKIN_TAU_S  = 0.02
 DEBUG = True
-
 PHASE0 = 0.0
+
+# BEC visual helper
+FIELDS_DIR = ROOT / "results" / "two_state_dimless" / "fields" 
+FIELDS_DIR.mkdir(parents=True, exist_ok=True)                     
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 def local_snr_near(f, P, f_dm, band_hz=2.0, guard_hz=5.0, nbhd_hz=20.0):
@@ -197,6 +201,9 @@ def run_state(tag, c_state, epsilon, omega_bar, spatial_eps, spatial_theta):
 
     print(f"[INFO] Running state {tag} with c_state={c_state:+.1f}, ε={epsilon:g}, Ω={omega_bar:.3f} …")
     res = sim.run(V_function=V_total, snapshot_interval=0)
+    # Save final wavefunction + grids for visualization
+    sim.save_wavefunction_npz(FIELDS_DIR / f"dimless_{tag}_final.npz")
+
 
     np.savez_compressed(RESULTS_TS / f"dimless_{tag}.npz",
                         times=res.times,

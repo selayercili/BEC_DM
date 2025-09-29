@@ -38,6 +38,9 @@ class BECSimulation:
         y = (np.arange(ny) - ny//2) * dy
         self.X, self.Y = np.meshgrid(x, y, indexing='xy')
 
+        self.x = x  # NEW
+        self.y = y  # NEW
+
         # prepare FFT k-grid (angular wavenumbers)
         kx = 2.0 * np.pi * np.fft.fftfreq(nx, d=dx)
         ky = 2.0 * np.pi * np.fft.fftfreq(ny, d=dy)
@@ -70,6 +73,14 @@ class BECSimulation:
         psi0 /= norm
         self.psi = psi0
         self._initial_norm = np.sum(np.abs(self.psi)**2) * self.dx * self.dy
+
+    def save_wavefunction_npz(self, path):
+        from pathlib import Path
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(path, psi=self.psi.astype(np.complex128),
+                            x=self.x, y=self.y)
+
 
     def _kinetic_propagator(self, dt):
         """
@@ -202,6 +213,11 @@ class BECSimulation:
         center_phases = np.unwrap(np.array(center_phases))
         ref_phases = np.unwrap(np.array(ref_phases))
         delta_phi = center_phases - ref_phases
+        
+        # ... after delta_phi has been computed
+        self.psi = psi.copy()            # NEW: keep final state on the object
+        final_psi = psi.copy()           # NEW
+
 
         result = SimpleNamespace()
         result.times = np.arange(0, self.nsteps) * self.dt
@@ -211,6 +227,7 @@ class BECSimulation:
         result.psi_snapshots = psi_snapshots
         result.params = dict(nx=self.nx, ny=self.ny, dx=self.dx, dy=self.dy,
                              m=self.m, g=self.g, dt=self.dt, t_total=self.t_total)
+        result.final_psi = final_psi
 
         return result
 
