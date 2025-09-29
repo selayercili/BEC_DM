@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch, butter, filtfilt
 
+np.random.seed(42)        # reproducible tests/figures
+
 # ── project paths ─────────────────────────────────────────────────────────────
 THIS = Path(__file__).resolve()
 ROOT = THIS.parents[1]
@@ -41,7 +43,7 @@ M_PARTICLE = 1.6726219e-27               # kg (proton used in your solver)
 NX = NY = 128    
 DX = DY = 1.0            # treated as units of the harmonic oscillator length (dimensionless X,Y)
 DT = 2.5e-4                # seconds (solver runs in SI time; we feed it V in Joules)
-T_TOTAL = 15.0           # seconds (longer run → narrower PSD bins)
+T_TOTAL = 30.0           # seconds (longer run → narrower PSD bins)
 G  = 1e-52               # your existing nonlinearity
 
 # Two-state coupling (opposite signs; physically corresponds to states with opposite effective coupling)
@@ -63,7 +65,7 @@ HPF_CUTOFF_HZ = 50.0                     # remove slow drift (well below f_DM≈
 LOCKIN_TAU_S  = 0.02
 DEBUG = True
 
-PHASE0 = np.random.uniform(0, 2*np.pi)
+PHASE0 = 0.0
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 def local_snr_near(f, P, f_dm, band_hz=2.0, guard_hz=5.0, nbhd_hz=20.0):
@@ -102,6 +104,27 @@ def compute_psd(y, fs):
     nper = min(8192, len(y))
     f, P = welch(y, fs=fs, window='hann', nperseg=nper, noverlap=nper//2)
     return f, P
+
+def local_snr_integrated(f, P, f_dm, band_hz=1.0, guard_hz=5.0, nbhd_hz=20.0):
+    """
+    Integrated SNR around f_dm over a fixed ±band_hz window.
+    - signal_power = ∫ P(f) df over [f_dm - band_hz, f_dm + band_hz]
+    - noise_power  = (median PSD in nearby bands) * (2*band_hz)
+    Returns (snr, signal_power, noise_psd).
+    """
+    if len(f) == 0 or len(P) == 0:
+        return float('nan'), 0.0, 0.0
+    band = (f > f_dm - band_hz) & (f < f_dm + band_hz)
+    nbhd = ((f > f_dm - nbhd_hz) & (f < f_dm - guard_hz)) | ((f > f_dm + guard_hz) & (f < f_dm + nbhd_hz))
+    if not band.any() or not nbhd.any():
+        return float('nan'), 0.0, 0.0
+    sig_power = float(np.trapz(P[band], f[band]))
+    noise_psd = float(np.median(P[nbhd]))
+    noise_power = noise_psd * (2.0 * band_hz)
+    if noise_power <= 0.0:
+        return float('nan'), sig_power, noise_psd
+    return sig_power / noise_power, sig_power, noise_psd
+
 
 def save_psd(f, P, f_dm, path, title="PSD"):
     fig, ax = plt.subplots(figsize=(9,3.6))
@@ -216,11 +239,8 @@ def main():
     save_psd_zoom(f, P, f_dm, span=25.0, path=PLOTS_DIR / "psd_zoom_fdm.png")
 
     # Local SNR metric near f_DM
-    band = (f > f_dm-2.0) & (f < f_dm+2.0)
-    nbhd = ((f > f_dm-20) & (f < f_dm-5)) | ((f > f_dm+5) & (f < f_dm+20))
-    signal_power = float(P[band].max()) if band.any() else 0.0
-    noise_floor  = float(np.median(P[nbhd])) if nbhd.any() else 1e-12
-    snr, signal_power, noise_floor = local_snr_near(f, P, f_dm)
+    snr_peak, pk_sig, pk_noise = local_snr_near(f, P, f_dm) # (keep for dev/debug)
+    snr_int,  int_sig, int_npsd = local_snr_integrated(f, P, f_dm, band_hz=1.0)
     # Lock-in detector at f_DM
     amp = lock_in(t, dphi_detr, f_dm, tau=LOCKIN_TAU_S)
     save_time_plot(t, amp, PLOTS_DIR / "lockin_amp.png",
@@ -234,18 +254,38 @@ def main():
         "trap": {"f_tr_hz": F_TR_HZ, "omega_tr_rad_s": OMEGA_TR, "E0_J": E0},
         "dm":   {"m_phi_ev": M_PHI_EV, "omega_dm_rad_s": OMEGA_DM,
                  "f_dm_hz": f_dm, "Omega=omega_dm/omega_tr": OMEGA_BAR,
-                 "epsilon_dimless": EPSILON, "spatial_eps": SPATIAL_EPS},
+                 "epsilon_dimless": EPSILON, "spatial_eps": SPATIAL_EPS, "phase0": float(PHASE0)},
         "solver": {"dt_s": DT, "t_total_s": T_TOTAL, "fs_hz": fs, "nx": NX, "ny": NY},
         "phi1": s1, "phi2": s2, "dphi": sd,
-        "analysis": {"hpf_cutoff_hz": HPF_CUTOFF_HZ,
-                     "lockin_tau_s": LOCKIN_TAU_S,
-                     "local_snr_near_fdm": snr,
-                     "signal_power": signal_power,
-                     "noise_floor": noise_floor}
+        "analysis": {
+                    "hpf_cutoff_hz": HPF_CUTOFF_HZ,
+                    "lockin_tau_s": LOCKIN_TAU_S,
+                    "local_snr_near_fdm_peakbin": snr_peak,
+                    "local_snr_near_fdm_integrated": snr_int,
+                    "signal_power_integrated": int_sig,
+                    "noise_psd_median": int_npsd
+                    }
     }
     with open(RESULTS_TS / "summary.json", "w") as fh:
         json.dump(summary, fh, indent=2)
 
+    # Append a row to CSV for appendix reproducibility
+    import csv
+    log_csv = RESULTS_TS / "runs_log.csv"
+    row = {
+    "DT": DT, "T_TOTAL": T_TOTAL, "NX": NX, "NY": NY, "F_TR_HZ": F_TR_HZ,
+    "M_PHI_EV": M_PHI_EV, "EPSILON": EPSILON, "SPATIAL_EPS": SPATIAL_EPS,
+    "COUPLING_1": COUPLING_1, "COUPLING_2": COUPLING_2,
+    "HPF_CUTOFF_HZ": HPF_CUTOFF_HZ, "LOCKIN_TAU_S": LOCKIN_TAU_S, "PHASE0": PHASE0,
+    "f_dm_hz": f_dm, "snr_peak": snr_peak, "snr_integrated": snr_int
+    }
+    exists = log_csv.exists()
+    with open(log_csv, "a", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=row.keys())
+        if not exists: w.writeheader()
+        w.writerow(row)
+
+    
     print("\n[SUMMARY]")
     print(json.dumps(summary, indent=2))
     print("\n[OUTPUT] Plots →", PLOTS_DIR)
