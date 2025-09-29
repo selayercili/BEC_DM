@@ -38,7 +38,7 @@ E0        = HBAR * OMEGA_TR              # J
 M_PARTICLE = 1.6726219e-27               # kg (proton used in your solver)
 
 # Grid / solver settings (kept close to your working setup)
-NX = NY = 160    
+NX = NY = 128    
 DX = DY = 1.0            # treated as units of the harmonic oscillator length (dimensionless X,Y)
 DT = 2.5e-4                # seconds (solver runs in SI time; we feed it V in Joules)
 T_TOTAL = 15.0           # seconds (longer run → narrower PSD bins)
@@ -62,6 +62,8 @@ SPATIAL_THETA = 0.0                      # direction of weak gradient
 HPF_CUTOFF_HZ = 50.0                     # remove slow drift (well below f_DM≈242 Hz)
 LOCKIN_TAU_S  = 0.02
 DEBUG = True
+
+PHASE0 = np.random.uniform(0, 2*np.pi)
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 def local_snr_near(f, P, f_dm, band_hz=2.0, guard_hz=5.0, nbhd_hz=20.0):
@@ -145,7 +147,7 @@ def build_V_total_callable(X, Y, epsilon, c_state, omega_bar, spatial_eps, spati
         # map physical time t [s] to dimensionless τ = ω_tr * t
         tau = OMEGA_TR * t
         # dimensionless potential inside [...]
-        V_dimless = 0.5*R2 + c_state * epsilon * (1.0 + GdotR) * np.cos(omega_bar * tau)
+        V_dimless = 0.5*R2 + c_state * epsilon * (1.0 + GdotR) * np.cos(omega_bar * tau + PHASE0)
         return E0 * V_dimless
 
     return V_total
