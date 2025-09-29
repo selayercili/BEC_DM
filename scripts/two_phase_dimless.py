@@ -38,7 +38,7 @@ E0        = HBAR * OMEGA_TR              # J
 M_PARTICLE = 1.6726219e-27               # kg (proton used in your solver)
 
 # Grid / solver settings (kept close to your working setup)
-NX = NY = 96
+NX = NY = 160    
 DX = DY = 1.0            # treated as units of the harmonic oscillator length (dimensionless X,Y)
 DT = 2.5e-4                # seconds (solver runs in SI time; we feed it V in Joules)
 T_TOTAL = 15.0           # seconds (longer run → narrower PSD bins)
