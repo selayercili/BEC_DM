@@ -54,7 +54,7 @@ COUPLING_2 = -1.0
 M_PHI_EV   = 1e-12                       # eV (ULDM "mass")
 OMEGA_DM   = (M_PHI_EV * EV2J) / HBAR    # rad/s
 OMEGA_BAR  = OMEGA_DM / OMEGA_TR         # dimensionless DM frequency Ω = ω_DM/ω_tr
-EPSILON    = 1e-5                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
+EPSILON    = 0                        # dimensionless DM amplitude ε ≪ 1 (small perturbation)
 
 # tiny spatial structure so the drive isn't perfectly uniform (breaks common-mode)
 SPATIAL_EPS   = 1e-3                     # dimensionless modulation strength ≪ 1
