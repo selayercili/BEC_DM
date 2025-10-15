@@ -1,7 +1,7 @@
 # BEC_DM: Astrophysical BEC Simulation for Ultralight Dark Matter Detection
-[![DOI](https://zenodo.org/badge/1036281527.svg)](https://doi.org/10.5281/zenodo.17363200)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17363321.svg)](https://doi.org/10.5281/zenodo.17363321)
 
-> **Status:** Active research project (v0.1, preprint-ready)  
+> **Status:** Active research project (v0.1.1, preprint-ready)  
 > **Keywords:** Bose–Einstein condensate, ultralight dark matter, phase shift sensing, numerical simulation, Python
 
 ## Overview
@@ -166,7 +166,7 @@ PRs and issues welcome! Please:
 ## Cite This Work
 
 **APA:**  
-Ercili, S. (2025). BEC_DM: Astrophysical BEC Simulation for Ultralight Dark Matter Detection [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.17363200
+Ercili, S. (2025). BEC_DM: Astrophysical BEC Simulation for Ultralight Dark Matter Detection [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.17363321
 
 **BibTeX:**
 ```bibtex
@@ -175,10 +175,10 @@ Ercili, S. (2025). BEC_DM: Astrophysical BEC Simulation for Ultralight Dark Matt
   title        = {Simulation of Astrophysical Bose–Einstein Condensates for Ultralight Dark Matter Detection},
   year         = {2025},
   publisher    = {Zenodo},
-  note         = {Version 0.1, preprint},
+  note         = {Version 0.1.1, preprint},
   copyright    = {MIT License},
-  doi          = {10.5281/zenodo.17363201},
-  url          = {https://doi.org/10.5281/zenodo.17363200}
+  doi          = {10.5281/zenodo.17363321},
+  url          = {https://doi.org/10.5281/zenodo.17363321}
 }
 ```
 
